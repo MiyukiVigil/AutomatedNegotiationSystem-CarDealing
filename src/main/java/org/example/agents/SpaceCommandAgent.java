@@ -4,8 +4,10 @@ import jade.core.AID;
 import jade.core.Agent;
 import jade.lang.acl.ACLMessage;
 
+// Short-lived helper agent that sends one UI command to SpaceControl or another target agent.
 public class SpaceCommandAgent extends Agent {
     @Override
+    // Reads command arguments, sends the requested control message, and exits.
     protected void setup() {
         Object[] args = getArguments();
         if (args == null || args.length == 0 || args[0] == null) {

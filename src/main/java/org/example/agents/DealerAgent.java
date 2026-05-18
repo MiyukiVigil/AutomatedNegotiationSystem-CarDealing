@@ -9,23 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * DealerAgent — Phase 2
- *
- * Negotiation is now fully broker-routed.
- * Inbound ontologies:
- *   BROKER_INVITE      (REQUEST)  — first offer relayed by broker; "sessionId;buyerName;car;offer"
- *   BROKER_RELAY_OFFER (PROPOSE)  — subsequent buyer counter relayed by broker; same schema
- *   CYCLE_UPDATE / START_CYCLE    — price adjustment from SpaceControl
- *   PRICE_ADJUSTMENT              — manual override from GUI
- *
- * Outbound ontologies:
- *   DEALER_COUNTER (REJECT_PROPOSAL) → broker
- *   DEALER_ACCEPT  (ACCEPT_PROPOSAL) → broker
- *
- * Extension 1 foundation: per-session state is isolated via sessionId so one
- * dealer can safely handle multiple concurrent buyers.
- */
+// Represents a seller that negotiates through the broker and adjusts target price over market cycles.
 public class DealerAgent extends Agent {
 
     private String car;
@@ -41,6 +25,7 @@ public class DealerAgent extends Agent {
     private NegotiationConfig.Strategy activeStrategy;
     private final Map<String, DealerSessionState> activeSessions = new LinkedHashMap<>();
 
+    // Stores one buyer session so simultaneous broker-routed offers do not overwrite each other.
     private static class DealerSessionState {
         String sessionId;
         String buyerName;
@@ -49,6 +34,7 @@ public class DealerAgent extends Agent {
         int rounds;
         String status;
 
+        // Creates per-session state from the first broker-relayed offer.
         DealerSessionState(String sessionId, String buyerName, String carModel, NegotiationTerms latestTerms) {
             this.sessionId = sessionId;
             this.buyerName = buyerName;
@@ -59,6 +45,7 @@ public class DealerAgent extends Agent {
     }
 
     @Override
+    // Initializes listing details, registers with broker and SpaceControl, and starts message handling.
     protected void setup() {
         Object[] args = getArguments();
         car         = (String) args[0];
@@ -122,6 +109,7 @@ public class DealerAgent extends Agent {
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
+    // Handles CYCLE_UPDATE or START_CYCLE by recalculating the dealer's target price.
     private void handleCycleUpdate(ACLMessage msg) {
         int currentCycle = Integer.parseInt(msg.getContent());
         int t = Math.min(currentCycle, config.getDeadlineCycles());
@@ -139,6 +127,7 @@ public class DealerAgent extends Agent {
         log("Price updated to RM" + currentTargetPrice + " (cycle " + t + ")");
     }
 
+    // Handles PRICE_ADJUSTMENT from the UI by overriding the target price floor.
     private void handleManualPriceAdjustment(ACLMessage msg) {
         try {
             int adjusted = Integer.parseInt(msg.getContent());
@@ -150,6 +139,7 @@ public class DealerAgent extends Agent {
         }
     }
 
+    // Handles BROKER_INVITE and BROKER_RELAY_OFFER using "sessionId;buyerName;carModel;terms".
     private void handleBrokerOffer(ACLMessage msg) {
         String[] p    = msg.getContent().split(";");
         if (p.length < 4) {
@@ -265,6 +255,7 @@ public class DealerAgent extends Agent {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // Notifies SpaceControl that this dealer has completed its current market action.
     private void notifySpace() {
         ACLMessage action = new ACLMessage(ACLMessage.INFORM);
         action.setOntology("ACTION_COMPLETED");
@@ -273,6 +264,7 @@ public class DealerAgent extends Agent {
     }
 
     @Override
+    // Deregisters from SpaceControl when the dealer agent terminates.
     protected void takeDown() {
         ACLMessage dereg = new ACLMessage(ACLMessage.INFORM);
         dereg.setOntology("DEREGISTER");
@@ -281,15 +273,18 @@ public class DealerAgent extends Agent {
         log("Terminating");
     }
 
+    // Sends a dealer-prefixed message to the UI logger when one is configured.
     private void log(String m) {
         if (logger != null) logger.log(getLocalName() + ": " + m);
     }
 
+    // Formats the configured strategy switch for startup status messages.
     private String strategySwitchText() {
         if (config.getStrategySwitchCycle() <= 0 || config.getSwitchStrategy() == config.getStrategy()) return "";
         return " → " + config.getSwitchStrategy() + " at cycle " + config.getStrategySwitchCycle();
     }
 
+    // Builds the dealer's current counter-offer terms from target price and concession progress.
     private NegotiationTerms dealerCounterTerms() {
         double concession = (double) Math.max(0, retailPrice - currentTargetPrice)
                 / Math.max(1, retailPrice - minPrice);
@@ -300,6 +295,7 @@ public class DealerAgent extends Agent {
         return new NegotiationTerms(currentTargetPrice, warranty, delivery);
     }
 
+    // Returns whether incoming terms meet the dealer's reserve and utility threshold.
     private boolean acceptableUtility(NegotiationTerms terms) {
         double utility = preferences.dealerUtility(terms, retailPrice, minPrice,
                 preferences.getDefaultWarrantyMonths() * 2,
@@ -307,6 +303,7 @@ public class DealerAgent extends Agent {
         return terms.getPrice() >= minPrice && utility >= 0.45;
     }
 
+    // Identifies first offers too far below reserve and utility to enter negotiation.
     private boolean isClearlyUnworkableFirstOffer(NegotiationTerms terms) {
         double utility = preferences.dealerUtility(terms, retailPrice, minPrice,
                 preferences.getDefaultWarrantyMonths() * 2,
@@ -314,6 +311,7 @@ public class DealerAgent extends Agent {
         return terms.getPrice() < (int) (minPrice * 0.60) && utility < 0.05;
     }
 
+    // Formats non-price terms for dealer log messages.
     private String termsText(NegotiationTerms terms) {
         return " | Warranty=" + terms.getWarrantyMonths() + " months | Delivery="
                 + terms.getDeliveryDays() + " days";

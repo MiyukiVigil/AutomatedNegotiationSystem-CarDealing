@@ -8,21 +8,7 @@ import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
 
-/**
- * BrokerAgent — Phase 1
- *
- * Protocol contract: docs/protocol-contract.md
- *
- * Message ontologies handled (inbound):
- *   ""               — Dealer registration (INFORM, empty ontology)
- *   BUYER_SEARCH     — Buyer requests shortlist (REQUEST)
- *   BUYER_SHORTLIST  — Buyer selects dealer + first offer terms (PROPOSE) → creates session
- *   DEALER_COUNTER   — Dealer rejects with counter (REJECT_PROPOSAL) → relayed to buyer
- *   DEALER_ACCEPT    — Dealer accepts offer (ACCEPT_PROPOSAL) → settle session
- *   DEALER_REJECT    — Dealer declines buyer's first offer before negotiation
- *   BUYER_COUNTER    — Buyer counter-offer (PROPOSE) → relayed to dealer
- *   BUYER_WALKAWAY   — Buyer gives up on session (FAILURE) → close session
- */
+// Routes every negotiation message between buyers and dealers, owns sessions, fees, and market records.
 public class BrokerAgent extends Agent {
 
     // ── Fee constants ──────────────────────────────────────────────────────────
@@ -39,16 +25,20 @@ public class BrokerAgent extends Agent {
 
     // ── Inner types ────────────────────────────────────────────────────────────
 
+    // Stores one dealer's available inventory entry and reserve price.
     public static class CarListing {
         public String dealer, model;
         public int price, stock, reservePrice;
+        // Creates an inventory listing published by a dealer agent.
         public CarListing(String d, String m, int p, int s, int r) {
             dealer = d; model = m; price = p; stock = s; reservePrice = r;
         }
     }
 
+    // Tracks the lifecycle state of a broker-managed negotiation session.
     public enum SessionStatus { NEGOTIATING, SETTLED, FAILED, TIMEOUT }
 
+    // Holds per-session state so concurrent negotiations stay isolated by sessionId.
     public static class NegotiationSession {
         public final String sessionId;
         public final String buyerId;
@@ -61,6 +51,7 @@ public class BrokerAgent extends Agent {
         public final long startTime;
         public boolean feeCharged;
 
+        // Creates a new active session from the buyer's first broker-routed offer.
         public NegotiationSession(String sid, String buyer, String dealer,
                                   String car, NegotiationTerms firstTerms, int reserve) {
             sessionId   = sid;
@@ -76,10 +67,12 @@ public class BrokerAgent extends Agent {
         }
     }
 
+    // Records one completed sale for dashboard metrics.
     public static class Transaction {
         public String buyer, dealer, car;
         public int price;
         public long timestamp;
+        // Creates a transaction record with the current completion timestamp.
         public Transaction(String b, String d, String c, int p) {
             buyer = b; dealer = d; car = c; price = p;
             timestamp = System.currentTimeMillis();
@@ -89,6 +82,7 @@ public class BrokerAgent extends Agent {
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     @Override
+    // Initializes broker logging, message routing, and periodic session timeout scanning.
     protected void setup() {
         if (getArguments() != null && getArguments().length > 0) {
             logger = (UILogger) getArguments()[0];
@@ -129,7 +123,7 @@ public class BrokerAgent extends Agent {
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
-    /** Dealer registration: INFORM / empty ontology / "car;price;stock;reserve" */
+    // Handles dealer registration: INFORM / empty ontology / "car;price;stock;reserve".
     private void handleDealerRegister(ACLMessage msg) {
         if (msg.getPerformative() != ACLMessage.INFORM) return;
         String[] d = msg.getContent().split(";");
@@ -142,7 +136,7 @@ public class BrokerAgent extends Agent {
                 + " | Stock: " + stock + " (Seller: " + msg.getSender().getLocalName() + ")");
     }
 
-    /** Buyer search: REQUEST / BUYER_SEARCH / "sessionId;carModel" */
+    // Handles buyer search: REQUEST / BUYER_SEARCH / "sessionId;carModel".
     private void handleBuyerSearch(ACLMessage msg) {
         String[] parts = msg.getContent().split(";", 2);
         String sessionId = parts[0];
@@ -168,11 +162,7 @@ public class BrokerAgent extends Agent {
                 : "SEARCH: No " + carModel + " available for " + msg.getSender().getLocalName());
     }
 
-    /**
-     * Buyer shortlist submission: PROPOSE / BUYER_SHORTLIST
-     * Content: "sessionId;dealerName;terms;buyerReserve;carModel"
-     * → Creates session, charges fixed fee, invites dealer.
-     */
+    // Creates a session from BUYER_SHORTLIST and invites the selected dealer.
     private void handleBuyerShortlist(ACLMessage msg) {
         String[] p = msg.getContent().split(";");
         if (p.length < 5) {
@@ -224,10 +214,7 @@ public class BrokerAgent extends Agent {
                 + firstTerms.getDeliveryDays() + " days");
     }
 
-    /**
-     * Dealer counter: REJECT_PROPOSAL / DEALER_COUNTER / "sessionId;counterTerms"
-     * → Relay counter to buyer.
-     */
+    // Relays DEALER_COUNTER terms from the dealer to the buyer for this session.
     private void handleDealerCounter(ACLMessage msg) {
         String[] p = msg.getContent().split(";", 2);
         String sessionId = p[0];
@@ -253,10 +240,7 @@ public class BrokerAgent extends Agent {
         send(relay);
     }
 
-    /**
-     * Dealer accept: ACCEPT_PROPOSAL / DEALER_ACCEPT / "sessionId;agreedTerms"
-     * → Charge commission, settle session, notify buyer.
-     */
+    // Settles DEALER_ACCEPT, records revenue and transaction data, and notifies the buyer.
     private void handleDealerAccept(ACLMessage msg) {
         String[] p    = msg.getContent().split(";", 2);
         String sessionId  = p[0];
@@ -295,10 +279,7 @@ public class BrokerAgent extends Agent {
         send(notify);
     }
 
-    /**
-     * Buyer counter: PROPOSE / BUYER_COUNTER / "sessionId;newTerms"
-     * → Relay new offer to dealer.
-     */
+    // Relays BUYER_COUNTER terms from the buyer to the dealer for this session.
     private void handleBuyerCounter(ACLMessage msg) {
         String[] p = msg.getContent().split(";", 2);
         String sessionId = p[0];
@@ -323,6 +304,7 @@ public class BrokerAgent extends Agent {
         send(relay);
     }
 
+    // Handles DEALER_REJECT by failing the session and notifying the buyer.
     private void handleDealerReject(ACLMessage msg) {
         String[] p = msg.getContent().split(";", 2);
         String sessionId = p[0];
@@ -344,10 +326,7 @@ public class BrokerAgent extends Agent {
         send(notify);
     }
 
-    /**
-     * Buyer walkaway: FAILURE / BUYER_WALKAWAY / "sessionId;reason"
-     * → Mark session FAILED. Fixed fee already collected.
-     */
+    // Handles BUYER_WALKAWAY by failing an active session or recording a pre-session no-deal.
     private void handleBuyerWalkaway(ACLMessage msg) {
         String[] p = msg.getContent().split(";");
         String sessionId = p[0];
@@ -375,11 +354,7 @@ public class BrokerAgent extends Agent {
         }
     }
 
-    /**
-     * Dealer sold out: INFORM / DEALER_SOLD_OUT / "sessionId1,sessionId2,..."
-     * Dealer went out of stock mid-negotiation. Close every listed session and
-     * notify the affected buyers so they can immediately try the next dealer.
-     */
+    // Handles DEALER_SOLD_OUT by failing affected sessions and telling buyers to continue.
     private void handleDealerSoldOut(ACLMessage msg) {
         String dealerName = msg.getSender().getLocalName();
         String[] sessionIds = msg.getContent().split(",");
@@ -407,6 +382,7 @@ public class BrokerAgent extends Agent {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // Decrements stock for the dealer and model involved in a settled transaction.
     private void reduceStock(String dealerName, String carModel) {
         for (CarListing cl : inventory) {
             if (cl.dealer.equals(dealerName)
@@ -418,6 +394,7 @@ public class BrokerAgent extends Agent {
         }
     }
 
+    // Finds the reserve price for a dealer/model listing, or -1 when it is unknown.
     private int lookupDealerReserve(String dealerName, String carModel) {
         for (CarListing cl : inventory) {
             if (cl.dealer.equals(dealerName) && cl.model.equalsIgnoreCase(carModel)) {
@@ -427,6 +404,7 @@ public class BrokerAgent extends Agent {
         return -1;
     }
 
+    // Fails active sessions that exceed the configured timeout and informs buyers.
     private void closeTimedOutSessions() {
         long now = System.currentTimeMillis();
         for (NegotiationSession s : sessions.values()) {
@@ -451,6 +429,7 @@ public class BrokerAgent extends Agent {
         }
     }
 
+    // Logs aggregate broker performance metrics after a session outcome changes.
     private void logPerformanceMetrics() {
         int total = transactions.size() + noDealCount;
         double avgPrice  = transactions.stream().mapToInt(t -> t.price).average().orElse(0);
@@ -461,15 +440,21 @@ public class BrokerAgent extends Agent {
                 transactions.size(), noDealCount, avgPrice, avgRounds, successRate));
     }
 
+    // Sends a broker-prefixed message to the UI logger when one is configured.
     private void log(String m) {
         if (logger != null) logger.log("[BROKER] " + m);
     }
 
     // ── Public accessors (for GUI dashboard, Phase 4) ─────────────────────────
 
+    // Returns a read-only view of current broker inventory for the dashboard.
     public List<CarListing>                    getInventory()    { return Collections.unmodifiableList(inventory); }
+    // Returns a read-only view of broker sessions for the dashboard.
     public Map<String, NegotiationSession>     getSessions()     { return Collections.unmodifiableMap(sessions); }
+    // Returns a read-only view of completed transactions for the dashboard.
     public List<Transaction>                   getTransactions() { return Collections.unmodifiableList(transactions); }
+    // Returns total fixed-fee and commission revenue collected by the broker.
     public double getTotalRevenue()   { return totalRevenue; }
+    // Returns the number of failed, timed out, or pre-session no-deal outcomes.
     public int    getNoDealCount()    { return noDealCount; }
 }

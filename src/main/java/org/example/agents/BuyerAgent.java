@@ -10,23 +10,7 @@ import jade.core.behaviours.OneShotBehaviour;
 import jade.core.behaviours.WakerBehaviour;
 import jade.lang.acl.ACLMessage;
 
-/**
- * BuyerAgent — Phase 3
- *
- * Negotiation is now fully broker-routed. The buyer NEVER contacts a dealer directly.
- *
- * Flow:
- *  1. Send BUYER_SEARCH (REQUEST) to broker with sessionId + carModel
- *  2. Receive BROKER_SHORTLIST (PROPOSE) — parse dealers
- *  3. Pick next unaffordable-skipped dealer; send BUYER_SHORTLIST (PROPOSE) to broker
- *     (broker creates session, charges fixed fee, invites dealer)
- *  4. Receive BROKER_RELAY_COUNTER (REJECT_PROPOSAL) — send BUYER_COUNTER (PROPOSE) to broker
- *  5. Receive BROKER_RELAY_ACCEPT (ACCEPT_PROPOSAL) — deal done
- *  6. If max rounds reached → BUYER_WALKAWAY (FAILURE) to broker → try next dealer
- *
- * Session IDs: "{buyerLocalName}-{carModel}-{attemptIndex}"
- * Each dealer attempt is a new session (new fixed fee).
- */
+// Represents a buyer that searches and negotiates only through the broker.
 public class BuyerAgent extends Agent {
 
     // ── Config ────────────────────────────────────────────────────────────────
@@ -56,10 +40,12 @@ public class BuyerAgent extends Agent {
     private NegotiationTerms currentTerms;
 
     // ── Inner types ───────────────────────────────────────────────────────────
+    // Stores one shortlisted dealer option returned by the broker.
     private static class DealerOption {
         String name;
         int listedPrice;
         int reservePrice;
+        // Creates a shortlist option with listed and reserve prices for affordability checks.
         DealerOption(String n, int listed, int reserve) {
             name = n; listedPrice = listed; reservePrice = reserve;
         }
@@ -68,6 +54,7 @@ public class BuyerAgent extends Agent {
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     @Override
+    // Initializes buyer preferences and starts either automatic search or manual waiting.
     protected void setup() {
         Object[] args = getArguments();
         desiredCar = (String) args[0];
@@ -155,6 +142,7 @@ public class BuyerAgent extends Agent {
 
     // ── Session management ────────────────────────────────────────────────────
 
+    // Registers with SpaceControl and starts the broker search phase.
     private void startNegotiationSession() {
         negotiationStarted = true;
         log("STATUS: Negotiation started for " + desiredCar + ".");
@@ -168,7 +156,7 @@ public class BuyerAgent extends Agent {
         searchBroker();
     }
 
-    /** Send BUYER_SEARCH to broker. Uses a placeholder sessionId for the search phase. */
+    // Sends BUYER_SEARCH to the broker using a search-only placeholder session id.
     public void searchBroker() {
         // Session ID for the search itself (not a negotiation session yet)
         String searchId = getLocalName() + "-" + desiredCar + "-search";
@@ -181,6 +169,7 @@ public class BuyerAgent extends Agent {
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
+    // Handles CYCLE_UPDATE by increasing the buyer's willing offer over local negotiation time.
     private void handleCycleUpdate(ACLMessage msg) {
         int currentCycle = Integer.parseInt(msg.getContent());
         if (startCycle == -1) startCycle = currentCycle;
@@ -199,10 +188,7 @@ public class BuyerAgent extends Agent {
                 + termsText(currentTerms));
     }
 
-    /**
-     * BROKER_SHORTLIST: "searchSessionId;dealer1:price1:reserve1,dealer2:..."  or  "...;NONE"
-     * Parse shortlist, verify affordability, send BUYER_SHORTLIST to broker.
-     */
+    // Handles BROKER_SHORTLIST by parsing dealers, filtering by budget, and starting negotiation.
     private void handleBrokerShortlist(ACLMessage msg) {
         // Content: "{searchId};{dealerCsv}"  where dealerCsv may be "NONE"
         String content = msg.getContent();
@@ -270,10 +256,7 @@ public class BuyerAgent extends Agent {
         submitShortlistToBroker();
     }
 
-    /**
-     * Pick the current dealer (skip if unaffordable), generate a new sessionId,
-     * and send BUYER_SHORTLIST to broker.
-     */
+    // Selects the next affordable dealer and sends BUYER_SHORTLIST with the first offer.
     private void submitShortlistToBroker() {
         // Skip dealers whose reserve price exceeds budget
         while (currentDealerIdx < dealers.size()
@@ -319,10 +302,7 @@ public class BuyerAgent extends Agent {
                 + "] @ RM" + currentWillingOffer + termsText(firstTerms));
     }
 
-    /**
-     * BROKER_RELAY_COUNTER: "sessionId;dealerName;counterPrice"
-     * The broker has relayed the dealer's counter-offer to us.
-     */
+    // Handles BROKER_RELAY_COUNTER by accepting, countering, or walking away based on utility and rounds.
     private void handleBrokerRelayCounter(ACLMessage msg) {
         String[] p   = msg.getContent().split(";");
         String sid   = p[0];
@@ -365,10 +345,7 @@ public class BuyerAgent extends Agent {
         }
     }
 
-    /**
-     * BROKER_RELAY_ACCEPT: "sessionId;dealerName;agreedPrice"
-     * The deal is confirmed by the broker (dealer already accepted).
-     */
+    // Handles BROKER_RELAY_ACCEPT by recording success, notifying SpaceControl, and terminating.
     private void handleBrokerRelayAccept(ACLMessage msg) {
         String[] p   = msg.getContent().split(";");
         // p[0]=sessionId, p[1]=dealerName
@@ -381,11 +358,7 @@ public class BuyerAgent extends Agent {
         doDelete();
     }
 
-    /**
-     * BROKER_RELAY_SOLD_OUT: "sessionId;dealerName"
-     * The dealer went out of stock mid-negotiation.
-     * Advance to the next dealer in the shortlist immediately.
-     */
+    // Handles BROKER_RELAY_SOLD_OUT by moving immediately to the next shortlisted dealer.
     private void handleBrokerRelaySoldOut(ACLMessage msg) {
         String[] p      = msg.getContent().split(";", 2);
         String sessionId = p[0];
@@ -398,6 +371,7 @@ public class BuyerAgent extends Agent {
 
     // ── Outbound helpers ──────────────────────────────────────────────────────
 
+    // Handles BROKER_SESSION_REJECTED by stopping on timeout or trying the next dealer.
     private void handleBrokerSessionRejected(ACLMessage msg) {
         String[] p = msg.getContent().split(";", 2);
         String sid = p.length > 0 ? p[0] : activeSessionId;
@@ -413,7 +387,7 @@ public class BuyerAgent extends Agent {
         submitShortlistToBroker();
     }
 
-    /** Send BUYER_COUNTER (PROPOSE / BUYER_COUNTER) to broker */
+    // Sends BUYER_COUNTER as PROPOSE / BUYER_COUNTER to the broker for relay to the dealer.
     private void sendBuyerCounter(String sessionId, NegotiationTerms terms) {
         ACLMessage counter = new ACLMessage(ACLMessage.PROPOSE);
         counter.addReceiver(new AID("broker", AID.ISLOCALNAME));
@@ -428,7 +402,7 @@ public class BuyerAgent extends Agent {
         });
     }
 
-    /** Send BUYER_WALKAWAY (FAILURE / BUYER_WALKAWAY) to broker */
+    // Sends BUYER_WALKAWAY as FAILURE / BUYER_WALKAWAY to close the active session.
     private void sendWalkaway(String sessionId, String reason) {
         if (sessionId == null) {
             sendNoDealReport(reason);
@@ -441,6 +415,7 @@ public class BuyerAgent extends Agent {
         send(walkaway);
     }
 
+    // Reports a no-deal outcome that happened before a broker session could be created.
     private void sendNoDealReport(String reason) {
         String reportId = getLocalName() + "-" + desiredCar + "-pre-session-" + reason;
         ACLMessage walkaway = new ACLMessage(ACLMessage.FAILURE);
@@ -450,6 +425,7 @@ public class BuyerAgent extends Agent {
         send(walkaway);
     }
 
+    // Notifies SpaceControl that this buyer has completed its current market action.
     private void triggerMarketAction() {
         ACLMessage action = new ACLMessage(ACLMessage.INFORM);
         action.setOntology("ACTION_COMPLETED");
@@ -457,6 +433,7 @@ public class BuyerAgent extends Agent {
         send(action);
     }
 
+    // Handles MANUAL_ACTION commands from the UI for shortlist choice, counter, accept, or walkaway.
     private void handleManualAction(ACLMessage msg) {
         String content = msg.getContent();
         if (content == null || content.isEmpty()) return;
@@ -519,6 +496,7 @@ public class BuyerAgent extends Agent {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     @Override
+    // Deregisters from SpaceControl when the buyer agent terminates.
     protected void takeDown() {
         ACLMessage dereg = new ACLMessage(ACLMessage.INFORM);
         dereg.setOntology("DEREGISTER");
@@ -527,15 +505,18 @@ public class BuyerAgent extends Agent {
         log("Terminating");
     }
 
+    // Sends a buyer-prefixed message to the UI logger when one is configured.
     private void log(String m) {
         if (logger != null) logger.log(getLocalName() + ": " + m);
     }
 
+    // Formats the configured strategy switch for startup status messages.
     private String strategySwitchText() {
         if (config.getStrategySwitchCycle() <= 0 || config.getSwitchStrategy() == config.getStrategy()) return "";
         return " → " + config.getSwitchStrategy() + " at cycle " + config.getStrategySwitchCycle();
     }
 
+    // Builds buyer offer terms for a price, improving warranty and delivery as price rises.
     private NegotiationTerms buyerTermsForPrice(int price) {
         double progress = (double) Math.max(0, price - initialOffer) / Math.max(1, maxBudget - initialOffer);
         int defaultWarranty = preferences.getDefaultWarrantyMonths();
@@ -545,6 +526,7 @@ public class BuyerAgent extends Agent {
         return new NegotiationTerms(price, warranty, delivery);
     }
 
+    // Returns whether dealer terms fit the buyer budget and utility threshold.
     private boolean acceptableUtility(NegotiationTerms terms) {
         double utility = preferences.buyerUtility(terms, maxBudget,
                 preferences.getDefaultWarrantyMonths() * 2,
@@ -552,6 +534,7 @@ public class BuyerAgent extends Agent {
         return terms.getPrice() <= maxBudget && utility >= 0.35;
     }
 
+    // Formats non-price terms for buyer log messages.
     private String termsText(NegotiationTerms terms) {
         return " | Warranty=" + terms.getWarrantyMonths() + " months | Delivery="
                 + terms.getDeliveryDays() + " days";

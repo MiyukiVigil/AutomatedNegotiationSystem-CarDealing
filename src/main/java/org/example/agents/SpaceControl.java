@@ -1,7 +1,5 @@
-//This is a space control system that manages the time flow between agents.
-//You can stop the space to add agents to the system so that during that cycle, we can add up multiple agents simultaneously to simulate competitive negotiation.
-//All negotiation math will be affected by this cycle, for Dealer agent example, as the cycle continue, the value of the car will decrease, and the dealer will be more likely to accept lower offers.
-//For buyer agent, as the cycle continue, the buyer will be more likely to accept higher offers.
+// Coordinates market time by broadcasting cycle updates to registered negotiation agents.
+// Pausing lets the UI add several agents before the next shared negotiation cycle advances.
 
 package org.example.agents;
 
@@ -13,19 +11,18 @@ import org.example.MainUI.UILogger;
 import java.util.HashSet;
 import java.util.Set;
 
+// Owns the market clock and control commands used by buyers, dealers, and the UI.
 public class SpaceControl extends Agent {
     private final Set<AID> activeAgents = new HashSet<>();
     private final Set<AID> completeAgents = new HashSet<>();
     private int cycleCount = 0;
     private boolean isPaused = false;
     private boolean cycleAdvancePending = false;
-    /**
-     * Inter-cycle delay in milliseconds. Mutable so the UI slider can adjust it at
-     * runtime.
-     */
+    // Inter-cycle delay in milliseconds, mutable so the UI speed slider can adjust it at runtime.
     private long autoCycleDelayMs = 1000;
     private UILogger logger;
 
+    // Initializes the control loop that handles registration, pause/resume, stepping, and speed commands.
     protected void setup() {
         if (getArguments() != null && getArguments().length > 0) {
             this.logger = (UILogger) getArguments()[0];
@@ -94,6 +91,7 @@ public class SpaceControl extends Agent {
                 });
     }
 
+    // Schedules the next automatic cycle once all current market actions have completed.
     private void scheduleCycleAdvance() {
         if (cycleAdvancePending || activeAgents.isEmpty()) {
             return;
@@ -110,6 +108,7 @@ public class SpaceControl extends Agent {
         });
     }
 
+    // Advances the market clock and sends CYCLE_UPDATE to every active agent.
     private void broadcastCycle(int increment) {
         cycleCount += increment;
 
@@ -125,7 +124,7 @@ public class SpaceControl extends Agent {
         log("Cycle Shift: " + cycleCount);
     }
 
-    // Helper method to make logging easier and safer
+    // Sends SpaceControl messages to the UI logger when one is configured.
     private void log(String message) {
         if (logger != null) {
             logger.log(message);
