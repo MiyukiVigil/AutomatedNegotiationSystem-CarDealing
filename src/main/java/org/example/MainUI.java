@@ -1,4 +1,4 @@
-package org.example;
+﻿package org.example;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,7 +37,6 @@ import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.Chart;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
-import javafx.scene.chart.StackedBarChart;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -48,14 +47,12 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
@@ -263,7 +260,6 @@ public class MainUI extends Application {
             String timestamp = "[" + LocalTime.now().format(timeFormatter) + "] ";
             final String formattedMsg = timestamp + msg + "\n";
 
-            // â”€â”€ Classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             boolean isBuyerReg = msg.contains("Buyer") && (msg.contains("registered") || msg.contains("added"));
             boolean isDealerReg = msg.contains("Dealer") && msg.contains("listed");
             boolean isSetupMsg = msg.contains("BROKER ONLINE") || msg.contains("Fixed Negotiation Fee")
@@ -295,7 +291,6 @@ public class MainUI extends Application {
                     unregisterTerminatedAgent(msg);
                 }
 
-                // â”€â”€ Activity log (filter to meaningful events) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if (isSetupMsg || isBuyerReg || isDealerReg || isCycleShift
                         || isSessionStart || isFeeCharged || isDealSettled
                         || isRevenue || isNoDeal || isPerformance || isNegotiationAction) {
@@ -307,7 +302,6 @@ public class MainUI extends Application {
                     }
                 }
 
-                // â”€â”€ Stat counters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if (isBuyerReg) {
                     registerBuyerInDashboard(extractQuotedName(msg));
                 }
@@ -614,18 +608,14 @@ public class MainUI extends Application {
             if (seg.contains("Buyer=")) {
                 int idx = seg.indexOf("Buyer=");
                 String buyer = seg.substring(idx + 6).trim();
-                if (buyer.contains("â†’")) {
-                    buyer = buyer.substring(buyer.indexOf("â†’") + 1).trim();
-                } else if (buyer.contains("->")) {
+                if (buyer.contains("->")) {
                     buyer = buyer.substring(buyer.indexOf("->") + 2).trim();
                 }
                 meta.buyer = buyer;
             }
             if (seg.startsWith("Dealer=")) {
                 String dealer = seg.substring(7).trim();
-                if (dealer.contains("â†’")) {
-                    dealer = dealer.substring(0, dealer.indexOf("â†’")).trim();
-                } else if (dealer.contains("->")) {
+                if (dealer.contains("->")) {
                     dealer = dealer.substring(0, dealer.indexOf("->")).trim();
                 }
                 meta.dealer = dealer;
@@ -701,7 +691,7 @@ public class MainUI extends Application {
     /** Removes relationship arrows and field fragments from parsed broker names. */
     private String trimBrokerRelationship(String value) {
         String cleaned = value == null ? "" : value.trim();
-        String[] arrows = { "\u2192", "\u00e2\u2020\u2019", "->" };
+        String[] arrows = { "\u2192", "->" };
         for (String arrow : arrows) {
             int arrowIdx = cleaned.indexOf(arrow);
             if (arrowIdx >= 0) {
@@ -836,12 +826,12 @@ public class MainUI extends Application {
         workspacePane = new StackPane();
         workspacePane.setStyle("-fx-background-color: transparent;");
         workspacePane.getChildren().addAll(
-                createWorkspaceView("Dashboard", createBrokerView()),
-                createWorkspaceView("Participants", createParticipantsView(logger)),
-                createWorkspaceView("Manual Negotiation", createManualPlayView()),
-                createWorkspaceView("Sessions", createSessionsView()),
-                createWorkspaceView("Analytics", createMarketAnalysisView()),
-                createWorkspaceView("Logs", createLogsView()));
+                createWorkspaceView("Dashboard:", createBrokerView()),
+                createWorkspaceView("Participants Portal:", createParticipantsView(logger)),
+                createWorkspaceView("Manual Mode:", createManualPlayView()),
+                createWorkspaceView("Sessions:", createSessionsView()),
+                createWorkspaceView("Negotiation Settings:", createMarketAnalysisView()),
+                createWorkspaceView("Logs:", createLogsView()));
 
         VBox sidebar = createSidebar();
         HBox shell = new HBox(0, sidebar, workspacePane);
@@ -906,17 +896,17 @@ public class MainUI extends Application {
 
         VBox nav = new VBox(8);
         nav.getChildren().addAll(
-                createNavigationButton("Dashboard", "Overview, KPIs, graph"),
-                createNavigationButton("Participants", "Buyers and dealers"),
-                createNavigationButton("Manual Negotiation", "Guided negotiation"),
-                createNavigationButton("Sessions", "Deals and fees"),
-                createNavigationButton("Analytics", "Settings and protocol"),
-                createNavigationButton("Logs", "Activity and failures"));
+                createNavigationButton("Dashboard:", "Overview, KPIs, Graph"),
+                createNavigationButton("Participants Portal:", "Buyers and Dealers"),
+                createNavigationButton("Manual Mode:", "Buyers and Dealers"),
+                createNavigationButton("Sessions:", "History and Details"),
+                createNavigationButton("Negotiation Settings:", "Strategy Controls"),
+                createNavigationButton("Logs:", "Activity and Failures"));
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
-        Label footer = new Label("Poppins UI\nJADE ACL routed");
+        Label footer = new Label("Poppins UI");
         footer.setStyle("-fx-font-size: 11; -fx-text-fill: #bfdbfe; -fx-line-spacing: 2;");
 
         VBox sidebar = new VBox(8, brandBox, nav, spacer, footer);
@@ -974,7 +964,7 @@ public class MainUI extends Application {
         Label title = new Label("Automated Car Negotiation System");
         title.setStyle("-fx-font-size: 22; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
         Label subtitle = new Label(
-                "JADE broker-routed marketplace  Â·  session-based negotiation  Â·  real-time metrics");
+                "JADE broker-routed marketplace    session-based negotiation    real-time metrics");
         subtitle.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + ";");
         VBox titleBox = new VBox(3, title, subtitle);
         titleBox.setPadding(new Insets(0, 0, 0, 14));
@@ -1195,7 +1185,7 @@ public class MainUI extends Application {
             cc.createNewAgent(nextAgentName("dealer-command"), "org.example.agents.SpaceCommandAgent",
                     new Object[] { "PRICE_ADJUSTMENT", dealerName, price }).start();
         } catch (Exception e) {
-            showAlert("âŒ Error sending price adjustment: " + e.getMessage(), Alert.AlertType.ERROR);
+            showAlert("Error sending price adjustment: " + e.getMessage(), Alert.AlertType.ERROR);
         }
     }
 
@@ -1210,7 +1200,7 @@ public class MainUI extends Application {
             cc.createNewAgent(nextAgentName("agent-command"), "org.example.agents.SpaceCommandAgent",
                     new Object[] { command, agentName, content }).start();
         } catch (Exception e) {
-            showAlert("âŒ Error sending command to " + agentName + ": " + e.getMessage(), Alert.AlertType.ERROR);
+            showAlert("Error sending command to " + agentName + ": " + e.getMessage(), Alert.AlertType.ERROR);
         }
     }
 
@@ -1435,24 +1425,22 @@ public class MainUI extends Application {
         box.setPadding(new Insets(24));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
-        // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Label headerLabel = new Label("Marketplace Dashboard");
         headerLabel.setStyle("-fx-font-size: 22; -fx-font-weight: 700; -fx-text-fill: " + PRIMARY_BLUE + ";");
-        Label subLabel = new Label("Live broker metrics Â· negotiation trajectory Â· quick-start guide");
+        Label subLabel = new Label("Live broker metrics - negotiation trajectory - quick-start guide");
         subLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + ";");
         VBox hdr = new VBox(2, headerLabel, subLabel);
 
-        // â”€â”€ 6 stat cards (3 per row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         HBox statsRow1 = new HBox(12,
-                createStatCard("ðŸ§‘ Active Buyers", buyerCountLabel, ACCENT_BLUE),
-                createStatCard("ðŸš— Active Dealers", dealerCountLabel, WARNING_ORANGE),
-                createStatCard("ðŸ” Active Sessions", activeSessionsLabel, "#8b5cf6"));
+                createStatCard("Active Buyers", buyerCountLabel, ACCENT_BLUE),
+                createStatCard("Active Dealers", dealerCountLabel, WARNING_ORANGE),
+                createStatCard("Active Sessions", activeSessionsLabel, "#8b5cf6"));
         HBox statsRow2 = new HBox(12,
-                createStatCard("âœ… Deals Closed", transactionCountLabel, SUCCESS_GREEN),
-                createStatCard("âŒ Failed Deals", failedDealsCountLabel, ERROR_RED),
-                createStatCard("ðŸ’° Total Revenue", revenueLabel, "#ec4899"));
+                createStatCard("Deals Closed", transactionCountLabel, SUCCESS_GREEN),
+                createStatCard("Failed Deals", failedDealsCountLabel, ERROR_RED),
+                createStatCard("Total Revenue", revenueLabel, "#ec4899"));
         HBox statsRow3 = new HBox(12,
-                createStatCard("ðŸ’µ Fixed Fees", fixedFeesLabel, "#06b6d4"),
+                createStatCard("Fixed Fees", fixedFeesLabel, "#06b6d4"),
                 createStatCard("Commission (5% deals)", commissionLabel, SUCCESS_GREEN));
         for (HBox row : new HBox[] { statsRow1, statsRow2, statsRow3 }) {
             for (javafx.scene.Node n : row.getChildren())
@@ -1479,7 +1467,6 @@ public class MainUI extends Application {
         checklist.setStyle("-fx-background-color: #ecfeff; -fx-background-radius: 14;"
                 + "-fx-border-color: #67e8f9; -fx-border-radius: 14; -fx-border-width: 1;");
 
-        // â”€â”€ Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         VBox chartSection = createNegotiationVisualiser();
 
 
@@ -1913,7 +1900,7 @@ public class MainUI extends Application {
         return niceFraction * exponent;
     }
 
-    /** Installs the install tooltip behavior. */
+    /** Installs a tooltip on a chart data node after JavaFX creates it. */
     private void installTooltip(XYChart.Data<?, ?> data, String text) {
         Platform.runLater(() -> {
             Node node = data.getNode();
@@ -1925,7 +1912,7 @@ public class MainUI extends Application {
         });
     }
 
-    /** Applies styling for the line series element. */
+    /** Applies stroke color and dash styling to a line-chart series. */
     private void styleLineSeries(LineChart<?, ?> chart, XYChart.Series<?, ?> series, String color, boolean dashed) {
         Platform.runLater(() -> {
             Node line = series.getNode();
@@ -2631,19 +2618,19 @@ public class MainUI extends Application {
         return valueOrNA(dealer) + "|" + valueOrNA(car);
     }
 
-    /** Returns whether buyer point is true. */
+    /** Returns true when a trajectory point belongs to the buyer path. */
     private boolean isBuyerPoint(TrajectoryPoint point, SessionViewModel session) {
         if (point.event == TrajectoryEvent.START || point.event == TrajectoryEvent.OFFER) return true;
         return session != null && session.buyer != null && session.buyer.equals(point.agent);
     }
 
-    /** Returns whether dealer point is true. */
+    /** Returns true when a trajectory point belongs to the dealer path. */
     private boolean isDealerPoint(TrajectoryPoint point, SessionViewModel session) {
         if (point.event == TrajectoryEvent.COUNTER || point.event == TrajectoryEvent.ACCEPT) return true;
         return session != null && session.dealer != null && session.dealer.equals(point.agent);
     }
 
-    /** Returns whether outcome event is true. */
+    /** Returns true when an event represents a terminal session outcome. */
     private boolean isOutcomeEvent(TrajectoryEvent event) {
         return event == TrajectoryEvent.ACCEPT || event == TrajectoryEvent.WALKAWAY;
     }
@@ -2755,7 +2742,7 @@ public class MainUI extends Application {
     private void updateDealerStatus() {
         if (dealerCount == 0) {
             dealerStatusLabel
-                    .setText("Go to Dealer Portal â†’ Register at least ONE dealer with car inventory (Required first!)");
+                    .setText("Go to Dealer Portal -> Register at least ONE dealer with car inventory (Required first!)");
             dealerStatusLabel.setStyle("-fx-font-size: 13; -fx-text-fill: " + ERROR_RED + "; -fx-font-weight: bold;");
         } else {
             dealerStatusLabel.setText("/ " + dealerCount + " dealer agent(s) registered - Ready to accept buyers!");
@@ -2767,7 +2754,7 @@ public class MainUI extends Application {
     /** Updates the buyer status display state. */
     private void updateBuyerStatus() {
         if (buyerCount == 0) {
-            updateBuyerStatus.setText("Go to Buyer Portal â†’ Register buyer(s) with desired car & budget");
+            updateBuyerStatus.setText("Go to Buyer Portal -> Register buyer(s) with desired car & budget");
             updateBuyerStatus.setStyle("-fx-font-size: 13; -fx-text-fill: " + ERROR_RED + "; -fx-font-weight: bold;");
         } else {
             updateBuyerStatus.setText("/ " + buyerCount + " buyer agent(s) registered - Ready to accept dealers!");
@@ -2857,7 +2844,7 @@ public class MainUI extends Application {
         form.add(buyerName, 1, 0);
         form.add(makeFieldLabel("Desired Car", "Car model to search for"), 0, 1);
         form.add(carModel, 1, 1);
-        form.add(makeFieldLabel("Max Budget (RM)", "Upper limit â€” buyer opens at ~70%"), 0, 2);
+        form.add(makeFieldLabel("Max Budget (RM)", "Upper limit - buyer opens at ~70%"), 0, 2);
         form.add(budget, 1, 2);
 
         CheckBox manualControlCheck = new CheckBox("Manual Negotiation Mode (Wait for my input)");
@@ -2871,17 +2858,17 @@ public class MainUI extends Application {
             String car = carModel.getValue() != null ? carModel.getValue() : "";
             String budgetStr = budget.getText().trim();
             if (name.isEmpty() || car.isEmpty() || budgetStr.isEmpty()) {
-                showAlert("âš ï¸ All fields are required!", Alert.AlertType.WARNING);
+                showAlert("All fields are required!", Alert.AlertType.WARNING);
                 return;
             }
             if (dealerCount == 0) {
-                showAlert("âŒ No dealers registered!\nPlease register a dealer first.", Alert.AlertType.ERROR);
+                showAlert("No dealers registered!\nPlease register a dealer first.", Alert.AlertType.ERROR);
                 return;
             }
             try {
                 double b = Double.parseDouble(budgetStr);
                 if (b <= 0) {
-                    showAlert("âŒ Budget must be > 0", Alert.AlertType.WARNING);
+                    showAlert("Budget must be > 0", Alert.AlertType.WARNING);
                     return;
                 }
                 boolean isManual = manualControlCheck.isSelected();
@@ -2898,16 +2885,16 @@ public class MainUI extends Application {
                 waitingBuyerAgents.add(name);
                 updateNegotiationControlStatus();
                 refreshNegotiationVisualiser();
-                logger.log("Buyer '" + name + "' added â€” " + car + " @ RM" + budgetStr);
+                logger.log("Buyer '" + name + "' added - " + car + " @ RM" + budgetStr);
                 buyerName.clear();
                 carModel.setValue(null);
                 budget.clear();
-                showAlert("âœ… Buyer " + name + " added. Press â–¶ Start.", Alert.AlertType.INFORMATION);
+                showAlert("Buyer " + name + " added. Press Start.", Alert.AlertType.INFORMATION);
             } catch (NumberFormatException ex) {
-                showAlert("âŒ Budget must be a valid number.", Alert.AlertType.ERROR);
+                showAlert("Budget must be a valid number.", Alert.AlertType.ERROR);
             } catch (Exception ex) {
-                logger.log("âŒ Error: " + ex.getMessage());
-                showAlert("âŒ " + ex.getMessage(), Alert.AlertType.ERROR);
+                logger.log("Error: " + ex.getMessage());
+                showAlert(ex.getMessage(), Alert.AlertType.ERROR);
             }
         });
 
@@ -2992,13 +2979,12 @@ public class MainUI extends Application {
         clearSessionBtn.setOnAction(e -> clearSession());
         sniffBtn.setOnAction(e -> launchSniffer(msg -> logArea.appendText(msg + "\n")));
 
-        // â”€â”€ Speed slider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // Tick positions 0-6 map to: 0.25Ã—, 0.5Ã—, 1Ã— (default), 2Ã—, 5Ã—
+        // Tick positions 0-6 map to speed multipliers.
         // Delay in ms: 4000, 2000, 1000, 500, 200, 100, 50
         long[] speedDelays = { 4000, 2000, 1000, 500, 200, 100, 50 };
-        String[] speedLabels = { "0.25Ã—", "0.5Ã—", "1Ã—", "2Ã—", "5Ã—", "10Ã—", "20Ã—" };
+        String[] speedLabels = { "0.25x", "0.5x", "1x", "2x", "5x", "10x", "20x" };
 
-        Slider speedSlider = new Slider(0, speedDelays.length - 1, 2); // default = index 2 â†’ 1000 ms
+        Slider speedSlider = new Slider(0, speedDelays.length - 1, 2);
         speedSlider.setMajorTickUnit(1);
         speedSlider.setMinorTickCount(0);
         speedSlider.setSnapToTicks(true);
@@ -3007,7 +2993,7 @@ public class MainUI extends Application {
         speedSlider.setPrefWidth(130);
         speedSlider.setStyle("-fx-padding: 0 4;");
 
-        Label speedLabel = new Label("1Ã—");
+        Label speedLabel = new Label("1x");
         speedLabel.setStyle("-fx-font-size: 11; -fx-font-weight: 700; -fx-text-fill: " + TEXT_MUTED
                 + "; -fx-min-width: 34; -fx-alignment: center;");
         Tooltip speedTip = new Tooltip("Cycle delay: 1000 ms");
@@ -3027,8 +3013,6 @@ public class MainUI extends Application {
         HBox speedBox = new HBox(4, speedIconLabel, speedSlider, speedLabel);
         speedBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         speedBox.setPadding(new Insets(0, 6, 0, 6));
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
         Separator sep = new Separator(javafx.geometry.Orientation.VERTICAL);
         sep.setPadding(new Insets(0, 4, 0, 4));
         Separator sep2 = new Separator(javafx.geometry.Orientation.VERTICAL);
@@ -3109,7 +3093,7 @@ public class MainUI extends Application {
                     + demoBuyerCount + " waiting buyers. Press Start to stress test negotiation and strategy switching.");
             showAlert("Demo scenario added. Press Start to begin negotiation.", Alert.AlertType.INFORMATION);
         } catch (Exception ex) {
-            showAlert("âŒ Error creating demo scenario: " + ex.getMessage(), Alert.AlertType.ERROR);
+            showAlert("Error creating demo scenario: " + ex.getMessage(), Alert.AlertType.ERROR);
         }
     }
 
@@ -3228,7 +3212,7 @@ public class MainUI extends Application {
             String stock = stockField.getText().trim();
 
             if (name.isEmpty() || car.isEmpty() || price.isEmpty() || stock.isEmpty()) {
-                showAlert("âš ï¸ All fields are required!", Alert.AlertType.WARNING);
+                showAlert("All fields are required!", Alert.AlertType.WARNING);
                 return;
             }
 
@@ -3236,12 +3220,12 @@ public class MainUI extends Application {
                 // Validate price is numeric
                 double priceAmount = Double.parseDouble(price);
                 if (priceAmount <= 0) {
-                    showAlert("âŒ Price must be greater than 0", Alert.AlertType.WARNING);
+                    showAlert("Price must be greater than 0", Alert.AlertType.WARNING);
                     return;
                 }
                 int stockAmount = Integer.parseInt(stock);
                 if (stockAmount <= 0) {
-                    showAlert("âŒ Stock must be at least 1", Alert.AlertType.WARNING);
+                    showAlert("Stock must be at least 1", Alert.AlertType.WARNING);
                     return;
                 }
 
@@ -3256,13 +3240,12 @@ public class MainUI extends Application {
                 carModel.setValue(null);
                 retailPrice.clear();
                 stockField.clear();
-                showAlert("âœ… Dealer " + name + " registered with " + stock + " unit(s)!", Alert.AlertType.INFORMATION);
-                ;
+                showAlert("Dealer " + name + " registered with " + stock + " unit(s)!", Alert.AlertType.INFORMATION);
             } catch (NumberFormatException ex) {
-                showAlert("âŒ Price and Stock must be valid numbers", Alert.AlertType.ERROR);
+                showAlert("Price and Stock must be valid numbers", Alert.AlertType.ERROR);
             } catch (Exception ex) {
-                logger.log("âŒ Error creating dealer: " + ex.getMessage());
-                showAlert("âŒ Error: " + ex.getMessage(), Alert.AlertType.ERROR);
+                logger.log("Error creating dealer: " + ex.getMessage());
+                showAlert("Error: " + ex.getMessage(), Alert.AlertType.ERROR);
             }
         });
 
@@ -3282,60 +3265,10 @@ public class MainUI extends Application {
         box.setPadding(new Insets(24));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
-        Label headerLabel = new Label("Market Analytics");
+        Label headerLabel = new Label("Negotiation Settings");
         headerLabel.setStyle("-fx-font-size: 25; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
 
-        TextArea analysisArea = new TextArea();
-        analysisArea.setEditable(false);
-        analysisArea.setWrapText(true);
-        analysisArea.setStyle(textAreaStyle(true));
-        analysisArea.setText(
-                "MARKET ANALYTICS DASHBOARD\n"
-                        + "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n"
-                        + "SYSTEM OVERVIEW:\n"
-                        + "  âœ“ Broker-Routed Multi-Agent Negotiation (JADE)\n"
-                        + "  âœ“ All messages relay through BrokerAgent\n"
-                        + "  âœ“ Session-based negotiation with unique IDs\n"
-                        + "  âœ“ Cycle-based concession using SpaceControl\n\n"
-                        + "BROKER FEE POLICY:\n"
-                        + "  â€¢ Fixed Session Fee:  RM " + (int) appConfig.fixedFee() + " (charged at session start)\n"
-                        + "  â€¢ Commission:         " + (int) (appConfig.commissionRate() * 100) + "% of final sale price (on deal only)\n"
-                        + "  â€¢ No-deal sessions:   Fixed fee still collected\n"
-                        + "  â€¢ Example: RM 100k sale = RM 5,000 commission + RM 50 fee\n\n"
-                        + "NEGOTIATION PROTOCOL (Broker-Routed):\n"
-                        + "  1. Dealer registers car listing with broker\n"
-                        + "  2. Buyer sends BUYER_SEARCH to broker\n"
-                        + "  3. Broker returns BROKER_SHORTLIST to buyer\n"
-                        + "  4. Buyer sends BUYER_SHORTLIST (selects dealer + first offer)\n"
-                        + "  5. Broker creates session, charges RM 50 fee, invites dealer\n"
-                        + "  6. Dealer replies DEALER_COUNTER or DEALER_ACCEPT to broker\n"
-                        + "  7. Broker relays BROKER_RELAY_COUNTER / BROKER_RELAY_ACCEPT\n"
-                        + "  8. Buyer replies BUYER_COUNTER or BUYER_WALKAWAY to broker\n"
-                        + "  9. On DEALER_ACCEPT: broker charges commission, notifies buyer\n\n"
-                        + "CYCLE-BASED CONCESSION (SPACE CONTROL):\n"
-                        + "  â€¢ Deadline:   50 market cycles (configurable)\n"
-                        + "  â€¢ Dealer:     Lowers ask price as cycles increase\n"
-                        + "  â€¢ Buyer:      Raises willing offer as cycles increase\n"
-                        + "  â€¢ Formula:    Price(t) = P0 - (P0 - Pres) * (t/T)^\u03b2\n"
-                        + "  â€¢ Strategies: BOULWARE (Î²=2), LINEAR (Î²=1), CONCEDER (Î²=0.45)\n\n"
-                        + "CURRENT METRICS: See Dashboard and Sessions views.\n"
-                        + "SETTINGS:        Adjust parameters in the panel above.\n"
-                        + "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
-
-        /*
-         * ScrollPane scrollPane = new ScrollPane(analysisArea);
-         * scrollPane.setFitToWidth(true);
-         * scrollPane.setStyle("-fx-border-color: #e5e7eb; -fx-border-width: 1;");
-         * 
-         * box.getChildren().addAll(headerLabel, scrollPane);
-         * VBox.setVgrow(scrollPane, Priority.ALWAYS);
-         */
-
-        analysisArea.setStyle(textAreaStyle(true));
-        box.getChildren().addAll(headerLabel, createSimulationControlPanel(), analysisArea);
-        VBox.setVgrow(analysisArea, Priority.ALWAYS);
-        // --------------------------------------------------
-
+        box.getChildren().addAll(headerLabel, createSimulationControlPanel());
         return box;
     }
 
@@ -3345,7 +3278,7 @@ public class MainUI extends Application {
         panel.setPadding(new Insets(20));
         panel.setStyle(PANEL_STYLE);
 
-        Label title = new Label("Negotiation Settings");
+        Label title = new Label("Strategy Defaults");
         title.setStyle("-fx-font-size: 17; -fx-font-weight: bold; -fx-text-fill: " + PRIMARY_BLUE + ";");
         NegotiationConfig defaults = NegotiationConfig.defaults();
 
@@ -3476,11 +3409,6 @@ public class MainUI extends Application {
             fullLogArea.setScrollTop(Double.MAX_VALUE);
         });
 
-        // Remove the redundant ScrollPane (TextArea is already scrollable)
-        // and allow the TextArea to expand to fill available height.
-        fullLogArea.setStyle(textAreaStyle(true));
-        // ----------------------------------------------------
-
         HBox controlBox = new HBox(12);
         controlBox.setPadding(new Insets(15));
         controlBox.setStyle(SOFT_PANEL_STYLE);
@@ -3506,8 +3434,6 @@ public class MainUI extends Application {
 
         box.getChildren().addAll(headerLabel, fullLogArea, controlBox);
         VBox.setVgrow(fullLogArea, Priority.ALWAYS);
-        // -------------------------
-
         return box;
     }
 
@@ -3561,7 +3487,7 @@ public class MainUI extends Application {
         return box;
     }
 
-    /** Sessions tab â€” live log of session start, settle, and fail events */
+    /** Creates the sessions view with broker session start, settlement, and failure logs. */
     private VBox createSessionsView() {
         VBox box = new VBox(18);
         box.setPadding(new Insets(24));
@@ -3573,7 +3499,7 @@ public class MainUI extends Application {
         // Mini stat row
         HBox miniStats = new HBox(16);
         VBox activeCard = createStatCard("Active", activeSessionsLabelMini, "#8b5cf6");
-        VBox feesCard = createStatCard("ðŸ’µ Fixed Fees", fixedFeesLabelMini, "#06b6d4");
+        VBox feesCard = createStatCard(" Fixed Fees", fixedFeesLabelMini, "#06b6d4");
         VBox commCard = createStatCard("Commission (5% deals)", commissionLabelMini, SUCCESS_GREEN);
         for (VBox c : new VBox[] { activeCard, feesCard, commCard }) {
             c.setPrefWidth(180);
@@ -3617,7 +3543,7 @@ public class MainUI extends Application {
         box.setPadding(new Insets(24));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
-        Label title = new Label("ðŸŽ® Manual Mode");
+        Label title = new Label(" Manual Mode");
         title.setStyle("-fx-font-size: 25; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
 
         HBox topBox = new HBox(15);
@@ -3730,7 +3656,7 @@ public class MainUI extends Application {
         manualWalkAwayBtn.setDisable(true);
     }
 
-    /** Returns whether positive integer is true. */
+    /** Returns true when text represents an integer greater than zero. */
     private boolean isPositiveInteger(String value) {
         try {
             return Integer.parseInt(value.trim()) > 0;
@@ -3838,10 +3764,10 @@ public class MainUI extends Application {
         return btn;
     }
 
-    /** Shows the alert view or prompt. */
+    /** Shows a modal alert with the provided message and type. */
     private void showAlert(String message, Alert.AlertType type) {
         Alert alert = new Alert(type);
-        alert.setTitle(type == Alert.AlertType.ERROR ? "âŒ Error" : "â„¹ï¸ Information");
+        alert.setTitle(type == Alert.AlertType.ERROR ? "Error" : "Information");
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();
