@@ -1,8 +1,3 @@
-//This is a space control system that manages the time flow between agents.
-//You can stop the space to add agents to the system so that during that cycle, we can add up multiple agents simultaneously to simulate competitive negotiation.
-//All negotiation math will be affected by this cycle, for Dealer agent example, as the cycle continue, the value of the car will decrease, and the dealer will be more likely to accept lower offers.
-//For buyer agent, as the cycle continue, the buyer will be more likely to accept higher offers.
-
 package org.example.agents;
 
 import jade.core.*;
@@ -13,19 +8,18 @@ import org.example.MainUI.UILogger;
 import java.util.HashSet;
 import java.util.Set;
 
+/** Coordinates simulation cycles and broadcasts timing updates to active agents. */
 public class SpaceControl extends Agent {
     private final Set<AID> activeAgents = new HashSet<>();
     private final Set<AID> completeAgents = new HashSet<>();
     private int cycleCount = 0;
     private boolean isPaused = false;
     private boolean cycleAdvancePending = false;
-    /**
-     * Inter-cycle delay in milliseconds. Mutable so the UI slider can adjust it at
-     * runtime.
-     */
+    /** Inter-cycle delay in milliseconds controlled by the UI speed slider. */
     private long autoCycleDelayMs = 1000;
     private UILogger logger;
 
+    /** Registers the command loop that handles cycle, pause, speed, and reset messages. */
     protected void setup() {
         if (getArguments() != null && getArguments().length > 0) {
             this.logger = (UILogger) getArguments()[0];
@@ -36,6 +30,7 @@ public class SpaceControl extends Agent {
         // Add behavior to JADE
         addBehaviour(
                 new CyclicBehaviour() {
+                    /** Processes one incoming space-control ACL message. */
                     public void action() {
                         ACLMessage msg = receive();
                         if (msg != null) {
@@ -101,6 +96,7 @@ public class SpaceControl extends Agent {
                 });
     }
 
+    /** Schedules the next automatic cycle if no cycle advance is already queued. */
     private void scheduleCycleAdvance() {
         if (cycleAdvancePending || activeAgents.isEmpty()) {
             return;
@@ -108,6 +104,7 @@ public class SpaceControl extends Agent {
 
         cycleAdvancePending = true;
         addBehaviour(new WakerBehaviour(this, autoCycleDelayMs) {
+            /** Broadcasts a cycle update after the configured delay. */
             protected void onWake() {
                 cycleAdvancePending = false;
                 if (!isPaused && !activeAgents.isEmpty()) {
@@ -117,6 +114,7 @@ public class SpaceControl extends Agent {
         });
     }
 
+    /** Increments the simulation cycle and broadcasts CYCLE_UPDATE to active agents. */
     private void broadcastCycle(int increment) {
         cycleCount += increment;
 
@@ -132,7 +130,7 @@ public class SpaceControl extends Agent {
         log("Cycle Shift: " + cycleCount);
     }
 
-    // Helper method to make logging easier and safer
+    /** Sends a UI log message when a logger is available. */
     private void log(String message) {
         if (logger != null) {
             logger.log(message);

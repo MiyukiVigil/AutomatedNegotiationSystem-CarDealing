@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  *
  * Extension 1 foundation: per-session state is isolated via sessionId so one
  * dealer can safely handle multiple concurrent buyers.
+ *
+ * Represents one dealer listing that evaluates broker-routed buyer offers.
  */
 public class DealerAgent extends Agent {
 
@@ -43,6 +45,7 @@ public class DealerAgent extends Agent {
     private final Map<String, DealerSessionState> activeSessions = new LinkedHashMap<>();
     private static final int NARROW_PRICE_WINDOW = 10_000;
 
+    /** Per-session state that isolates concurrent buyers for the same dealer. */
     private static class DealerSessionState {
         String sessionId;
         String buyerName;
@@ -51,6 +54,7 @@ public class DealerAgent extends Agent {
         int rounds;
         String status;
 
+        /** Creates a state record for a newly contacted buyer session. */
         DealerSessionState(String sessionId, String buyerName, String carModel, NegotiationTerms latestTerms) {
             this.sessionId = sessionId;
             this.buyerName = buyerName;
@@ -61,6 +65,7 @@ public class DealerAgent extends Agent {
     }
 
     @Override
+    /** Initializes dealer inventory, registers with the broker, and starts the message loop. */
     protected void setup() {
         Object[] args = getArguments();
         car         = (String) args[0];
@@ -79,6 +84,7 @@ public class DealerAgent extends Agent {
 
         // ── Register with broker and SpaceControl ─────────────────────────────
         addBehaviour(new OneShotBehaviour() {
+            /** Registers this dealer's inventory and simulation participation. */
             @Override
             public void action() {
                 // Register inventory with broker
@@ -97,6 +103,7 @@ public class DealerAgent extends Agent {
 
         // ── Main message loop ─────────────────────────────────────────────────
         addBehaviour(new CyclicBehaviour() {
+            /** Handles cycle updates, manual price changes, and brokered buyer offers. */
             @Override
             public void action() {
                 ACLMessage msg = receive();
@@ -124,6 +131,7 @@ public class DealerAgent extends Agent {
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
+    /** Applies a CYCLE_UPDATE by recalculating the dealer target price. */
     private void handleCycleUpdate(ACLMessage msg) {
         int currentCycle = Integer.parseInt(msg.getContent());
         latestCycle = Math.min(Math.max(0, currentCycle), config.getDeadlineCycles());
@@ -137,6 +145,7 @@ public class DealerAgent extends Agent {
         log("Price updated to RM" + currentTargetPrice + " (cycle " + latestCycle + ")");
     }
 
+    /** Applies a manual target-price override from the GUI. */
     private void handleManualPriceAdjustment(ACLMessage msg) {
         try {
             int adjusted = Integer.parseInt(msg.getContent());
@@ -148,6 +157,7 @@ public class DealerAgent extends Agent {
         }
     }
 
+    /** Evaluates BROKER_INVITE or BROKER_RELAY_OFFER content: sessionId;buyer;car;terms. */
     private void handleBrokerOffer(ACLMessage msg) {
         String[] p    = msg.getContent().split(";");
         if (p.length < 4) {
@@ -219,6 +229,7 @@ public class DealerAgent extends Agent {
             }
 
             addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 600) {
+                /** Sends the acceptance and any sold-out notices after a short UI-friendly delay. */
                 @Override
                 protected void onWake() {
                     send(accept);
@@ -252,6 +263,7 @@ public class DealerAgent extends Agent {
             counter.setContent(sessionId + ";" + counterTerms.toPayload());
             
             addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 600) {
+                /** Sends the counter-offer after a short UI-friendly delay. */
                 @Override
                 protected void onWake() {
                     send(counter);
@@ -264,6 +276,7 @@ public class DealerAgent extends Agent {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Notifies SpaceControl that the dealer completed an action this cycle. */
     private void notifySpace() {
         ACLMessage action = new ACLMessage(ACLMessage.INFORM);
         action.setOntology("ACTION_COMPLETED");
@@ -272,6 +285,7 @@ public class DealerAgent extends Agent {
     }
 
     @Override
+    /** Deregisters from SpaceControl when the dealer leaves the simulation. */
     protected void takeDown() {
         ACLMessage dereg = new ACLMessage(ACLMessage.INFORM);
         dereg.setOntology("DEREGISTER");
@@ -280,15 +294,18 @@ public class DealerAgent extends Agent {
         log("Terminating");
     }
 
+    /** Writes a dealer-prefixed message to the UI logger. */
     private void log(String m) {
         if (logger != null) logger.log(getLocalName() + ": " + m);
     }
 
+    /** Describes the configured strategy switch for status logs. */
     private String strategySwitchText() {
         if (config.getStrategySwitchCycle() <= 0 || config.getSwitchStrategy() == config.getStrategy()) return "";
         return " → " + config.getSwitchStrategy() + " at cycle " + config.getStrategySwitchCycle();
     }
 
+    /** Builds a counter-offer using the current target price and concession attributes. */
     private NegotiationTerms dealerCounterTerms() {
         double concession = (double) Math.max(0, retailPrice - currentTargetPrice)
                 / Math.max(1, retailPrice - minPrice);
@@ -299,6 +316,7 @@ public class DealerAgent extends Agent {
         return new NegotiationTerms(currentTargetPrice, warranty, delivery);
     }
 
+    /** Calculates the target asking price for the current cycle or round. */
     private int calculateTargetPrice(int progressStep) {
         if (manualTargetPrice >= 0) {
             return Math.max(minPrice, manualTargetPrice);
@@ -312,6 +330,7 @@ public class DealerAgent extends Agent {
         return Math.max(minPrice, (int) Math.round(target * config.getManualDealerTargetPercent()));
     }
 
+    /** Advances the dealer target price when a negotiation round occurs. */
     private void moveTargetForNegotiationRound(int round) {
         if (manualTargetPrice >= 0) {
             currentTargetPrice = Math.max(minPrice, manualTargetPrice);
@@ -325,6 +344,7 @@ public class DealerAgent extends Agent {
         currentTargetPrice = Math.max(minPrice, roundBasedTarget);
     }
 
+    /** Extends the concession deadline for narrow retail-to-reserve price windows. */
     private int effectiveDealerDeadlineCycles() {
         int deadline = config.getDeadlineCycles();
         int priceWindow = retailPrice - minPrice;
@@ -334,6 +354,7 @@ public class DealerAgent extends Agent {
         return deadline;
     }
 
+    /** Maps an extended deadline progress step back onto the configured strategy cycle. */
     private int scaleProgressToConfigCycle(int progressStep, int effectiveDeadline) {
         if (effectiveDeadline == config.getDeadlineCycles()) {
             return Math.min(progressStep, config.getDeadlineCycles());
@@ -342,6 +363,7 @@ public class DealerAgent extends Agent {
                 (int) Math.round((double) progressStep * config.getDeadlineCycles() / effectiveDeadline));
     }
 
+    /** Returns true when an offer has enough dealer utility to accept. */
     private boolean acceptableUtility(NegotiationTerms terms) {
         double utility = preferences.dealerUtility(terms, retailPrice, minPrice,
                 preferences.getDefaultWarrantyMonths() * 2,
@@ -349,6 +371,7 @@ public class DealerAgent extends Agent {
         return terms.getPrice() >= minPrice && utility >= 0.45;
     }
 
+    /** Returns true when the first offer is too poor to continue negotiating. */
     private boolean isClearlyUnworkableFirstOffer(NegotiationTerms terms) {
         double utility = preferences.dealerUtility(terms, retailPrice, minPrice,
                 preferences.getDefaultWarrantyMonths() * 2,
@@ -356,6 +379,7 @@ public class DealerAgent extends Agent {
         return terms.getPrice() < (int) (minPrice * 0.60) && utility < 0.05;
     }
 
+    /** Formats non-price terms for compact status logging. */
     private String termsText(NegotiationTerms terms) {
         return " | Warranty=" + terms.getWarrantyMonths() + " months | Delivery="
                 + terms.getDeliveryDays() + " days";

@@ -64,6 +64,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
+/** JavaFX dashboard and control console for the broker-routed car negotiation demo. */
 public class MainUI extends Application {
     private TextArea logArea = new TextArea();
     private Label buyerCountLabel = new Label("0");
@@ -188,12 +189,14 @@ public class MainUI extends Application {
             "Suzuki Swift", "Suzuki Ertiga", "Suzuki Vitara"
     };
 
+    /** Available visualiser modes inside the dashboard. */
     private enum VisualiserView {
         MARKET,
         SESSION,
         AGENT
     }
 
+    /** Event types recorded for visualising negotiation trajectories. */
     private enum TrajectoryEvent {
         START,
         OFFER,
@@ -203,6 +206,7 @@ public class MainUI extends Application {
         PRICE_UPDATE
     }
 
+    /** One plotted price event for a session or agent trajectory. */
     private static class TrajectoryPoint {
         private final int cycle;
         private final double price;
@@ -211,6 +215,7 @@ public class MainUI extends Application {
         private final String car;
         private final TrajectoryEvent event;
 
+        /** Captures one price, actor, session, car, and event for charting. */
         private TrajectoryPoint(int cycle, double price, String agent, String sessionId, String car,
                 TrajectoryEvent event) {
             this.cycle = cycle;
@@ -222,6 +227,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Parsed broker metadata for one negotiation session. */
     private static class SessionMeta {
         private final String sessionId;
         private String buyer;
@@ -235,11 +241,13 @@ public class MainUI extends Application {
         private Integer outcomeCycle;
         private String failureReason;
 
+        /** Creates metadata for a session id before all broker fields are known. */
         private SessionMeta(String sessionId) {
             this.sessionId = sessionId;
         }
     }
 
+    /** Launches the JavaFX application. */
     public static void main(String[] args) {
         launch(args);
     }
@@ -255,7 +263,7 @@ public class MainUI extends Application {
             String timestamp = "[" + LocalTime.now().format(timeFormatter) + "] ";
             final String formattedMsg = timestamp + msg + "\n";
 
-            // ── Classification ────────────────────────────────────────────────
+            // â”€â”€ Classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             boolean isBuyerReg = msg.contains("Buyer") && (msg.contains("registered") || msg.contains("added"));
             boolean isDealerReg = msg.contains("Dealer") && msg.contains("listed");
             boolean isSetupMsg = msg.contains("BROKER ONLINE") || msg.contains("Fixed Negotiation Fee")
@@ -287,7 +295,7 @@ public class MainUI extends Application {
                     unregisterTerminatedAgent(msg);
                 }
 
-                // ── Activity log (filter to meaningful events) ────────────────
+                // â”€â”€ Activity log (filter to meaningful events) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if (isSetupMsg || isBuyerReg || isDealerReg || isCycleShift
                         || isSessionStart || isFeeCharged || isDealSettled
                         || isRevenue || isNoDeal || isPerformance || isNegotiationAction) {
@@ -299,7 +307,7 @@ public class MainUI extends Application {
                     }
                 }
 
-                // ── Stat counters ─────────────────────────────────────────────
+                // â”€â”€ Stat counters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if (isBuyerReg) {
                     registerBuyerInDashboard(extractQuotedName(msg));
                 }
@@ -399,6 +407,7 @@ public class MainUI extends Application {
         stage.show();
     }
 
+    /** Ingests one broker or agent log message into trajectory state. */
     private void ingestTrajectoryEvent(String msg) {
         try {
             SessionMeta meta = parseSessionStart(msg);
@@ -430,6 +439,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Stores a trajectory point under its session and agent indexes. */
     private void storeTrajectoryPoint(TrajectoryPoint point) {
         if (point.sessionId != null) {
             sessionPoints.computeIfAbsent(point.sessionId, k -> new ArrayList<>()).add(point);
@@ -440,6 +450,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Parses session start input into UI state. */
     private SessionMeta parseSessionStart(String msg) {
         int idx = msg.indexOf("SESSION START:");
         if (idx < 0)
@@ -477,6 +488,7 @@ public class MainUI extends Application {
         return meta;
     }
 
+    /** Parses broker trajectory point input into UI state. */
     private TrajectoryPoint parseBrokerTrajectoryPoint(String msg) {
         if (!msg.contains("[BROKER]"))
             return null;
@@ -548,6 +560,7 @@ public class MainUI extends Application {
         return null;
     }
 
+    /** Parses agent price point input into UI state. */
     private TrajectoryPoint parseAgentPricePoint(String msg) {
         if (!msg.contains(":") || !msg.contains("RM"))
             return null;
@@ -587,6 +600,7 @@ public class MainUI extends Application {
         return new TrajectoryPoint(currentCycle, price, agentName, null, car, TrajectoryEvent.PRICE_UPDATE);
     }
 
+    /** Hydrates session metadata from broker payload text. */
     private void hydrateSessionMeta(SessionMeta meta, String payload) {
         if (hydrateSessionMetaFromFields(meta, payload)) {
             return;
@@ -600,8 +614,8 @@ public class MainUI extends Application {
             if (seg.contains("Buyer=")) {
                 int idx = seg.indexOf("Buyer=");
                 String buyer = seg.substring(idx + 6).trim();
-                if (buyer.contains("→")) {
-                    buyer = buyer.substring(buyer.indexOf("→") + 1).trim();
+                if (buyer.contains("â†’")) {
+                    buyer = buyer.substring(buyer.indexOf("â†’") + 1).trim();
                 } else if (buyer.contains("->")) {
                     buyer = buyer.substring(buyer.indexOf("->") + 2).trim();
                 }
@@ -609,8 +623,8 @@ public class MainUI extends Application {
             }
             if (seg.startsWith("Dealer=")) {
                 String dealer = seg.substring(7).trim();
-                if (dealer.contains("→")) {
-                    dealer = dealer.substring(0, dealer.indexOf("→")).trim();
+                if (dealer.contains("â†’")) {
+                    dealer = dealer.substring(0, dealer.indexOf("â†’")).trim();
                 } else if (dealer.contains("->")) {
                     dealer = dealer.substring(0, dealer.indexOf("->")).trim();
                 }
@@ -631,6 +645,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Hydrates session metadata from pipe-delimited broker fields. */
     private boolean hydrateSessionMetaFromFields(SessionMeta meta, String payload) {
         String buyer = extractBrokerField(payload, "Buyer");
         String dealer = extractBrokerField(payload, "Dealer");
@@ -665,6 +680,7 @@ public class MainUI extends Application {
         return hydrated;
     }
 
+    /** Extracts the broker field value from text. */
     private String extractBrokerField(String payload, String key) {
         String prefix = key + "=";
         String[] segments = payload.split("\\|");
@@ -682,6 +698,7 @@ public class MainUI extends Application {
         return null;
     }
 
+    /** Removes relationship arrows and field fragments from parsed broker names. */
     private String trimBrokerRelationship(String value) {
         String cleaned = value == null ? "" : value.trim();
         String[] arrows = { "\u2192", "\u00e2\u2020\u2019", "->" };
@@ -694,6 +711,7 @@ public class MainUI extends Application {
         return cleaned;
     }
 
+    /** Removes known broker field prefixes from a parsed value. */
     private String stripKnownFieldPrefix(String value) {
         String cleaned = value == null ? "" : value.trim();
         String[] prefixes = { "Buyer=", "Dealer=", "Car=", "Price=", "Reason=" };
@@ -710,6 +728,7 @@ public class MainUI extends Application {
         return cleaned;
     }
 
+    /** Derived view model used by the Session and Market visualisers. */
     private static class SessionViewModel {
         private String sessionId;
         private String buyer;
@@ -727,6 +746,7 @@ public class MainUI extends Application {
         private final List<TrajectoryPoint> points = new ArrayList<>();
     }
 
+    /** Derived view model used by the Agent visualiser. */
     private static class AgentViewModel {
         private String name;
         private String type;
@@ -738,6 +758,7 @@ public class MainUI extends Application {
         private double averageConcession;
     }
 
+    /** Derived view model used by the Live Listing Board. */
     private static class ListingViewModel {
         private String car;
         private String dealer;
@@ -747,6 +768,7 @@ public class MainUI extends Application {
         private String status;
     }
 
+    /** Extracts the reason value from text. */
     private String extractReason(String payload) {
         String[] segments = payload.split("\\|");
         for (String segment : segments) {
@@ -758,12 +780,14 @@ public class MainUI extends Application {
         return null;
     }
 
+    /** Extracts the session id value from text. */
     private String extractSessionId(String payload) {
         int pipe = payload.indexOf('|');
         String raw = pipe >= 0 ? payload.substring(0, pipe).trim() : payload.trim();
         return raw.isEmpty() ? null : raw;
     }
 
+    /** Parses money value input into UI state. */
     private Integer parseMoneyValue(String value) {
         Matcher matcher = RM_AMOUNT_PATTERN.matcher(value);
         if (matcher.find()) {
@@ -772,6 +796,7 @@ public class MainUI extends Application {
         return null;
     }
 
+    /** Extracts the final RM amount from text. */
     private Integer extractLastMoneyValue(String payload) {
         Matcher matcher = RM_AMOUNT_PATTERN.matcher(payload);
         Integer amount = null;
@@ -781,6 +806,7 @@ public class MainUI extends Application {
         return amount;
     }
 
+    /** Loads the fonts resource. */
     private void loadFonts() {
         loadFontResource("/fonts/Poppins-Regular.ttf");
         loadFontResource("/fonts/Poppins-Medium.ttf");
@@ -788,6 +814,7 @@ public class MainUI extends Application {
         loadFontResource("/fonts/Poppins-Bold.ttf");
     }
 
+    /** Loads one font resource when it is available. */
     private void loadFontResource(String path) {
         try (InputStream stream = getClass().getResourceAsStream(path)) {
             if (stream == null) {
@@ -800,6 +827,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Creates the main content UI component. */
     private VBox createMainContent(UILogger logger) {
         VBox root = new VBox(0);
         root.setStyle("-fx-background-color: " + LIGHT_GRAY + "; -fx-font-family: " + FONT_FAMILY
@@ -826,6 +854,7 @@ public class MainUI extends Application {
         return root;
     }
 
+    /** Creates the workspace view UI component. */
     private Node createWorkspaceView(String key, Node content) {
         StackPane wrapper = new StackPane(content);
         wrapper.setUserData(key);
@@ -835,6 +864,7 @@ public class MainUI extends Application {
         return wrapper;
     }
 
+    /** Applies shared dashboard scroll-pane styling. */
     private void polishScrollPane(ScrollPane scroll) {
         scroll.setFitToWidth(true);
         scroll.setPannable(true);
@@ -843,6 +873,7 @@ public class MainUI extends Application {
                 + "-fx-border-color: transparent; -fx-padding: 0;");
     }
 
+    /** Builds the shared text-area CSS string. */
     private String textAreaStyle(boolean monospace) {
         String font = monospace ? "'JetBrains Mono', 'Consolas', 'Courier New'" : FONT_FAMILY;
         return "-fx-font-size: 12; -fx-font-family: " + font + "; -fx-font-weight: " + FONT_WEIGHT_MEDIUM + ";"
@@ -854,6 +885,7 @@ public class MainUI extends Application {
                 + "-fx-padding: 8;";
     }
 
+    /** Creates the panel UI component. */
     private VBox createPanel(double spacing, Insets padding) {
         VBox panel = new VBox(spacing);
         panel.setPadding(padding);
@@ -861,6 +893,7 @@ public class MainUI extends Application {
         return panel;
     }
 
+    /** Creates the sidebar UI component. */
     private VBox createSidebar() {
         navigationButtons.clear();
 
@@ -895,6 +928,7 @@ public class MainUI extends Application {
         return sidebar;
     }
 
+    /** Creates the navigation button UI component. */
     private Button createNavigationButton(String title, String subtitle) {
         Button btn = new Button(title + "\n" + subtitle);
         btn.setMaxWidth(Double.MAX_VALUE);
@@ -905,6 +939,7 @@ public class MainUI extends Application {
         return btn;
     }
 
+    /** Builds the sidebar navigation button CSS string. */
     private String navButtonStyle(boolean active) {
         return "-fx-font-size: 12; -fx-font-family: " + FONT_FAMILY + "; -fx-font-weight: 700;"
                 + "-fx-padding: 10 12; -fx-background-radius: 10; -fx-border-radius: 10;"
@@ -913,6 +948,7 @@ public class MainUI extends Application {
                 + "-fx-cursor: hand; -fx-line-spacing: 2;";
     }
 
+    /** Shows the workspace view or prompt. */
     private void showWorkspace(String key) {
         if (workspacePane == null) {
             return;
@@ -928,6 +964,7 @@ public class MainUI extends Application {
         refreshNegotiationVisualiser();
     }
 
+    /** Creates the app header UI component. */
     private VBox createAppHeader() {
         Region stripe = new Region();
         stripe.setPrefWidth(5);
@@ -937,7 +974,7 @@ public class MainUI extends Application {
         Label title = new Label("Automated Car Negotiation System");
         title.setStyle("-fx-font-size: 22; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
         Label subtitle = new Label(
-                "JADE broker-routed marketplace  ·  session-based negotiation  ·  real-time metrics");
+                "JADE broker-routed marketplace  Â·  session-based negotiation  Â·  real-time metrics");
         subtitle.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + ";");
         VBox titleBox = new VBox(3, title, subtitle);
         titleBox.setPadding(new Insets(0, 0, 0, 14));
@@ -957,6 +994,7 @@ public class MainUI extends Application {
         return new VBox(row);
     }
 
+    /** Toggles automatic cycle advancement. */
     private void toggleAutoplay() {
         isAutoPlay = !isAutoPlay;
         if (playPauseBtn != null) {
@@ -965,6 +1003,7 @@ public class MainUI extends Application {
         sendSpaceCommand(isAutoPlay ? "RESUME" : "PAUSE");
     }
 
+    /** Updates the negotiation control status display state. */
     private void updateNegotiationControlStatus() {
         if (negotiationControlStatusLabel == null) {
             return;
@@ -977,11 +1016,13 @@ public class MainUI extends Application {
                 + waitingCount + " waiting | Simulation " + state);
     }
 
+    /** Writes a message to the UI logger when available. */
     private void loggerLog(String message) {
         String timestamp = "[" + LocalTime.now().format(timeFormatter) + "] ";
         logArea.appendText(timestamp + "[UI] " + message + "\n");
     }
 
+    /** Removes a terminated agent from dashboard registration state. */
     private void unregisterTerminatedAgent(String msg) {
         int colon = msg.indexOf(':');
         if (colon <= 0) {
@@ -1013,6 +1054,7 @@ public class MainUI extends Application {
         refreshNegotiationVisualiser();
     }
 
+    /** Registers a buyer name in dashboard state. */
     private void registerBuyerInDashboard(String agentName) {
         if (agentName != null && !registeredBuyerNames.add(agentName)) {
             return;
@@ -1022,6 +1064,7 @@ public class MainUI extends Application {
         updateBuyerStatus();
     }
 
+    /** Registers a dealer name in dashboard state. */
     private void registerDealerInDashboard(String agentName) {
         if (agentName != null && !registeredDealerNames.add(agentName)) {
             return;
@@ -1031,6 +1074,7 @@ public class MainUI extends Application {
         updateDealerStatus();
     }
 
+    /** Extracts the quoted name value from text. */
     private String extractQuotedName(String msg) {
         int firstQuote = msg.indexOf('\'');
         if (firstQuote < 0) {
@@ -1043,6 +1087,7 @@ public class MainUI extends Application {
         return msg.substring(firstQuote + 1, secondQuote);
     }
 
+    /** Records the failure report data for reporting. */
     private void recordFailureReport(String msg) {
         String payload = msg.contains("NO DEAL:")
                 ? msg.substring(msg.indexOf("NO DEAL:") + "NO DEAL:".length()).trim()
@@ -1058,6 +1103,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Builds the failure report data model. */
     private String buildFailureReport(String latestPayload, String latestReason) {
         StringBuilder report = new StringBuilder();
         report.append("Failure summary\n");
@@ -1084,6 +1130,7 @@ public class MainUI extends Application {
         return report.toString();
     }
 
+    /** Appends a parsed failure field to the failure report. */
     private void appendFailureField(StringBuilder report, String payload, String key) {
         String value = extractBrokerField(payload, key);
         if (value != null && !value.isBlank()) {
@@ -1091,10 +1138,12 @@ public class MainUI extends Application {
         }
     }
 
+    /** Converts a failure reason code into a readable label. */
     private String humanFailureReason(String reason) {
         return reason == null ? "Unknown" : reason.replace('_', ' ').toLowerCase();
     }
 
+    /** Explains a failure reason for dashboard reporting. */
     private String explainFailureReason(String reason) {
         if ("BUDGET_TOO_LOW".equals(reason)) {
             return "The buyer budget was below every matching dealer reserve price, so no session fee was charged.";
@@ -1120,6 +1169,7 @@ public class MainUI extends Application {
         return "The broker recorded the session as failed; check the raw failure log for the exact context.";
     }
 
+    /** Sends a control command to SpaceControl. */
     private void sendSpaceCommand(String command) {
         try {
             cc.createNewAgent(nextAgentName("space-command"), "org.example.agents.SpaceCommandAgent",
@@ -1129,6 +1179,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Sends a control command to BrokerAgent. */
     private void sendBrokerCommand(String command) {
         try {
             cc.createNewAgent(nextAgentName("broker-command"), "org.example.agents.SpaceCommandAgent",
@@ -1138,28 +1189,32 @@ public class MainUI extends Application {
         }
     }
 
+    /** Sends the dealer price adjustment command message. */
     private void sendDealerPriceAdjustment(String dealerName, String price) {
         try {
             cc.createNewAgent(nextAgentName("dealer-command"), "org.example.agents.SpaceCommandAgent",
                     new Object[] { "PRICE_ADJUSTMENT", dealerName, price }).start();
         } catch (Exception e) {
-            showAlert("❌ Error sending price adjustment: " + e.getMessage(), Alert.AlertType.ERROR);
+            showAlert("âŒ Error sending price adjustment: " + e.getMessage(), Alert.AlertType.ERROR);
         }
     }
 
+    /** Sends a command message to a named JADE agent. */
     private void sendAgentCommand(String agentName, String command) {
         sendAgentCommand(agentName, command, "");
     }
 
+    /** Sends a command message to a named JADE agent. */
     private void sendAgentCommand(String agentName, String command, String content) {
         try {
             cc.createNewAgent(nextAgentName("agent-command"), "org.example.agents.SpaceCommandAgent",
                     new Object[] { command, agentName, content }).start();
         } catch (Exception e) {
-            showAlert("❌ Error sending command to " + agentName + ": " + e.getMessage(), Alert.AlertType.ERROR);
+            showAlert("âŒ Error sending command to " + agentName + ": " + e.getMessage(), Alert.AlertType.ERROR);
         }
     }
 
+    /** Clears agents, logs, metrics, and visualiser state for a new run. */
     private void clearSession() {
         Set<String> agentsToKill = new LinkedHashSet<>();
         synchronized (buyerAgents) {
@@ -1244,6 +1299,7 @@ public class MainUI extends Application {
         loggerLog("Session cleared. Broker, space, agents, logs, metrics, and visualisers reset.");
     }
 
+    /** Terminates a JADE agent when it exists. */
     private void killAgentIfPresent(String agentName) {
         if (agentName == null || agentName.isBlank()) {
             return;
@@ -1254,6 +1310,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Launches the JADE sniffer for registered demo agents. */
     private void launchSniffer(UILogger logger) {
         try {
             String target = buildSnifferTargets();
@@ -1271,6 +1328,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Returns true when any buyer or dealer is registered. */
     private boolean hasRegisteredNegotiationAgents() {
         synchronized (dealerAgents) {
             if (!dealerAgents.isEmpty()) {
@@ -1282,6 +1340,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Builds the sniffer targets data model. */
     private String buildSnifferTargets() {
         LinkedHashSet<String> targets = new LinkedHashSet<>();
         targets.add("broker");
@@ -1295,10 +1354,12 @@ public class MainUI extends Application {
         return String.join(";", targets);
     }
 
+    /** Generates the next unique UI-created agent name. */
     private String nextAgentName(String prefix) {
         return prefix + "-" + System.nanoTime() + "-" + commandAgentCounter.incrementAndGet();
     }
 
+    /** Creates the participants view UI component. */
     private VBox createParticipantsView(UILogger logger) {
         VBox page = createPage("Participants", "Create dealers first, then add buyers into the broker-routed market.");
         HBox columns = new HBox(22);
@@ -1327,6 +1388,7 @@ public class MainUI extends Application {
         return page;
     }
 
+    /** Creates the logs view UI component. */
     private VBox createLogsView() {
         VBox page = createPage("Logs", "Monitor broker activity and failed negotiations in one place.");
         HBox columns = new HBox(18);
@@ -1352,6 +1414,7 @@ public class MainUI extends Application {
         return page;
     }
 
+    /** Creates the page UI component. */
     private VBox createPage(String title, String subtitle) {
         VBox page = new VBox(18);
         page.setPadding(new Insets(24));
@@ -1366,29 +1429,30 @@ public class MainUI extends Application {
         return page;
     }
 
+    /** Creates the broker view UI component. */
     private VBox createBrokerView() {
         VBox box = new VBox(18);
         box.setPadding(new Insets(24));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
-        // ── Header ────────────────────────────────────────────────────────────
+        // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Label headerLabel = new Label("Marketplace Dashboard");
         headerLabel.setStyle("-fx-font-size: 22; -fx-font-weight: 700; -fx-text-fill: " + PRIMARY_BLUE + ";");
-        Label subLabel = new Label("Live broker metrics · negotiation trajectory · quick-start guide");
+        Label subLabel = new Label("Live broker metrics Â· negotiation trajectory Â· quick-start guide");
         subLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + ";");
         VBox hdr = new VBox(2, headerLabel, subLabel);
 
-        // ── 6 stat cards (3 per row) ─────────────────────────────────────────
+        // â”€â”€ 6 stat cards (3 per row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         HBox statsRow1 = new HBox(12,
-                createStatCard("🧑 Active Buyers", buyerCountLabel, ACCENT_BLUE),
-                createStatCard("🚗 Active Dealers", dealerCountLabel, WARNING_ORANGE),
-                createStatCard("🔁 Active Sessions", activeSessionsLabel, "#8b5cf6"));
+                createStatCard("ðŸ§‘ Active Buyers", buyerCountLabel, ACCENT_BLUE),
+                createStatCard("ðŸš— Active Dealers", dealerCountLabel, WARNING_ORANGE),
+                createStatCard("ðŸ” Active Sessions", activeSessionsLabel, "#8b5cf6"));
         HBox statsRow2 = new HBox(12,
-                createStatCard("✅ Deals Closed", transactionCountLabel, SUCCESS_GREEN),
-                createStatCard("❌ Failed Deals", failedDealsCountLabel, ERROR_RED),
-                createStatCard("💰 Total Revenue", revenueLabel, "#ec4899"));
+                createStatCard("âœ… Deals Closed", transactionCountLabel, SUCCESS_GREEN),
+                createStatCard("âŒ Failed Deals", failedDealsCountLabel, ERROR_RED),
+                createStatCard("ðŸ’° Total Revenue", revenueLabel, "#ec4899"));
         HBox statsRow3 = new HBox(12,
-                createStatCard("💵 Fixed Fees", fixedFeesLabel, "#06b6d4"),
+                createStatCard("ðŸ’µ Fixed Fees", fixedFeesLabel, "#06b6d4"),
                 createStatCard("Commission (5% deals)", commissionLabel, SUCCESS_GREEN));
         for (HBox row : new HBox[] { statsRow1, statsRow2, statsRow3 }) {
             for (javafx.scene.Node n : row.getChildren())
@@ -1415,7 +1479,7 @@ public class MainUI extends Application {
         checklist.setStyle("-fx-background-color: #ecfeff; -fx-background-radius: 14;"
                 + "-fx-border-color: #67e8f9; -fx-border-radius: 14; -fx-border-width: 1;");
 
-        // ── Chart ─────────────────────────────────────────────────────────────
+        // â”€â”€ Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         VBox chartSection = createNegotiationVisualiser();
 
 
@@ -1434,6 +1498,7 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates the negotiation visualiser UI component. */
     private VBox createNegotiationVisualiser() {
         visualiserButtons.clear();
 
@@ -1476,6 +1541,7 @@ public class MainUI extends Application {
         return section;
     }
 
+    /** Creates the visualiser scroll UI component. */
     private ScrollPane createVisualiserScroll(VBox content) {
         content.setFillWidth(true);
         content.setMinWidth(0);
@@ -1487,6 +1553,7 @@ public class MainUI extends Application {
         return scroll;
     }
 
+    /** Creates the visualiser tab UI component. */
     private Button createVisualiserTab(String text, VisualiserView view) {
         Button button = new Button(text);
         button.setStyle(visualiserTabStyle(false));
@@ -1495,6 +1562,7 @@ public class MainUI extends Application {
         return button;
     }
 
+    /** Builds the visualiser tab button CSS string. */
     private String visualiserTabStyle(boolean active) {
         return "-fx-font-size: 12; -fx-font-family: " + FONT_FAMILY + "; -fx-font-weight: 800;"
                 + "-fx-padding: 7 12; -fx-background-radius: 8; -fx-border-radius: 8;"
@@ -1503,6 +1571,7 @@ public class MainUI extends Application {
                 + "-fx-border-color: " + (active ? ACCENT_BLUE : BORDER_SUBTLE) + "; -fx-cursor: hand;";
     }
 
+    /** Shows the selected visualiser view. */
     private void showVisualiserView(VisualiserView view) {
         activeVisualiserView = view;
         if (marketVisualiserScroll != null) {
@@ -1523,6 +1592,7 @@ public class MainUI extends Application {
         refreshNegotiationVisualiser();
     }
 
+    /** Refreshes whichever visualiser view is active. */
     private void refreshNegotiationVisualiser() {
         if (visualiserContentPane == null) {
             return;
@@ -1536,6 +1606,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Renders the Market View visualiser content. */
     private void renderMarketVisualiser() {
         if (marketVisualiserPane == null) {
             return;
@@ -1589,6 +1660,7 @@ public class MainUI extends Application {
                 createTableCard("Live listing board", createListingBoard(listings)));
     }
 
+    /** Renders the Session View visualiser content. */
     private void renderSessionVisualiser() {
         if (sessionVisualiserPane == null) {
             return;
@@ -1655,6 +1727,7 @@ public class MainUI extends Application {
                 createTableCard("Round-by-round log", createRoundLog(selected)));
     }
 
+    /** Renders the Agent View visualiser content. */
     private void renderAgentVisualiser() {
         if (agentVisualiserPane == null) {
             return;
@@ -1705,6 +1778,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Creates the visual metric UI component. */
     private VBox createVisualMetric(String title, String value, String sub) {
         VBox card = new VBox(3);
         card.setMinWidth(120);
@@ -1720,10 +1794,12 @@ public class MainUI extends Application {
         return card;
     }
 
+    /** Creates the chart card UI component. */
     private VBox createChartCard(String title, Node chart) {
         return createChartCard(title, chart, null);
     }
 
+    /** Creates the chart card UI component. */
     private VBox createChartCard(String title, Node chart, Node legend) {
         VBox card = new VBox(8);
         card.getChildren().addAll(createSectionLabel(title), chart);
@@ -1747,6 +1823,7 @@ public class MainUI extends Application {
         return card;
     }
 
+    /** Creates the chart legend UI component. */
     private HBox createChartLegend(Node... items) {
         HBox legend = new HBox(16, items);
         legend.setAlignment(javafx.geometry.Pos.CENTER);
@@ -1756,6 +1833,7 @@ public class MainUI extends Application {
         return legend;
     }
 
+    /** Creates the table card UI component. */
     private VBox createTableCard(String title, Node content) {
         VBox card = new VBox(8, createSectionLabel(title), content);
         card.setPadding(new Insets(14));
@@ -1763,6 +1841,7 @@ public class MainUI extends Application {
         return card;
     }
 
+    /** Applies shared visibility, sizing, and axis styling to a chart. */
     private void configureChart(Chart chart, Axis<?> xAxis, Axis<?> yAxis, double height) {
         chart.setAnimated(false);
         chart.setMinWidth(0);
@@ -1778,6 +1857,7 @@ public class MainUI extends Application {
         configureAxis(yAxis);
     }
 
+    /** Applies shared readable styling to a chart axis. */
     private void configureAxis(Axis<?> axis) {
         axis.setVisible(true);
         axis.setManaged(true);
@@ -1788,6 +1868,7 @@ public class MainUI extends Application {
                 + "-fx-text-fill: " + DARK_TEXT + ";");
     }
 
+    /** Bounds a numeric axis around visible values with padding. */
     private void boundNumberAxis(NumberAxis axis, List<Double> values, double fallbackMin, double fallbackMax) {
         if (values.isEmpty()) {
             axis.setAutoRanging(false);
@@ -1812,6 +1893,7 @@ public class MainUI extends Application {
         axis.setTickUnit(tick);
     }
 
+    /** Calculates a readable tick interval for chart axes. */
     private double niceTick(double roughTick) {
         if (roughTick <= 0) {
             return 1;
@@ -1831,6 +1913,7 @@ public class MainUI extends Application {
         return niceFraction * exponent;
     }
 
+    /** Installs the install tooltip behavior. */
     private void installTooltip(XYChart.Data<?, ?> data, String text) {
         Platform.runLater(() -> {
             Node node = data.getNode();
@@ -1842,6 +1925,7 @@ public class MainUI extends Application {
         });
     }
 
+    /** Applies styling for the line series element. */
     private void styleLineSeries(LineChart<?, ?> chart, XYChart.Series<?, ?> series, String color, boolean dashed) {
         Platform.runLater(() -> {
             Node line = series.getNode();
@@ -1861,6 +1945,7 @@ public class MainUI extends Application {
         });
     }
 
+    /** Creates the price distribution chart UI component. */
     private BarChart<String, Number> createPriceDistributionChart(List<SessionViewModel> sessions) {
         CategoryAxis xAxis = new CategoryAxis();
         xAxis.setLabel("Car model / session");
@@ -1908,6 +1993,7 @@ public class MainUI extends Application {
         return chart;
     }
 
+    /** Creates the concession trend chart UI component. */
     private LineChart<Number, Number> createConcessionTrendChart(List<SessionViewModel> sessions) {
         NumberAxis xAxis = new NumberAxis();
         xAxis.setLabel("Round");
@@ -1960,6 +2046,7 @@ public class MainUI extends Application {
         return chart;
     }
 
+    /** Creates the offer timeline chart UI component. */
     private LineChart<String, Number> createOfferTimelineChart(SessionViewModel session) {
         CategoryAxis xAxis = new CategoryAxis();
         xAxis.setLabel("Round");
@@ -2025,6 +2112,7 @@ public class MainUI extends Application {
         return chart;
     }
 
+    /** Creates the agent outcome summary UI component. */
     private Node createAgentOutcomeSummary(List<AgentViewModel> agents) {
         List<AgentViewModel> ranked = new ArrayList<>(agents);
         ranked.sort((a, b) -> {
@@ -2083,6 +2171,7 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates the outcome detail line UI component. */
     private HBox createOutcomeDetailLine(String label, String value) {
         Label left = new Label(label + ":");
         left.setStyle("-fx-font-size: 11; -fx-text-fill: " + TEXT_MUTED + "; -fx-font-weight: 700;");
@@ -2094,6 +2183,7 @@ public class MainUI extends Application {
         return row;
     }
 
+    /** Creates the legend swatch UI component. */
     private HBox createLegendSwatch(String label, String color) {
         Region swatch = new Region();
         swatch.setMinSize(10, 10);
@@ -2104,6 +2194,7 @@ public class MainUI extends Application {
         return new HBox(5, swatch, text);
     }
 
+    /** Creates the outcome summary row UI component. */
     private HBox createOutcomeSummaryRow(AgentViewModel agent) {
         int total = Math.max(1, agent.accepted + agent.rejected + agent.pending);
         Label name = new Label(shortLabel(agent.name, agent.name, 18));
@@ -2128,6 +2219,7 @@ public class MainUI extends Application {
         return row;
     }
 
+    /** Formats one outcome count segment for agent summaries. */
     private Region outcomeSegment(int value, int total, String color) {
         Region segment = new Region();
         double width = value == 0 ? 0 : Math.max(8, 220.0 * value / total);
@@ -2139,6 +2231,7 @@ public class MainUI extends Application {
         return segment;
     }
 
+    /** Creates the agent concession chart UI component. */
     private BarChart<String, Number> createAgentConcessionChart(List<AgentViewModel> agents) {
         CategoryAxis xAxis = new CategoryAxis();
         xAxis.setLabel("Agent");
@@ -2178,6 +2271,7 @@ public class MainUI extends Application {
         return chart;
     }
 
+    /** Creates the listing board UI component. */
     private GridPane createListingBoard(List<ListingViewModel> listings) {
         GridPane grid = tableGrid();
         addTableHeader(grid, 0, "Car", "Dealer", "List price", "Reserve", "Buyers", "Status");
@@ -2197,6 +2291,7 @@ public class MainUI extends Application {
         return grid;
     }
 
+    /** Creates the round log UI component. */
     private GridPane createRoundLog(SessionViewModel session) {
         GridPane grid = tableGrid();
         addTableHeader(grid, 0, "Round", "Agent", "Action", "Offer", "Delta");
@@ -2215,6 +2310,7 @@ public class MainUI extends Application {
         return grid;
     }
 
+    /** Creates the agent performance list UI component. */
     private Node createAgentPerformanceList(List<AgentViewModel> agents) {
         VBox list = new VBox(8);
         if (agents.isEmpty()) {
@@ -2255,6 +2351,7 @@ public class MainUI extends Application {
         return scroll;
     }
 
+    /** Builds the visible empty-state panel for Agent View. */
     private String agentEmptyMessage(String filter, boolean noAgentsExist) {
         if (noAgentsExist) {
             return "No agents yet. Use Demo Setup or add buyers/dealers.";
@@ -2268,6 +2365,7 @@ public class MainUI extends Application {
         return "No agents match this filter.";
     }
 
+    /** Creates the shared table-like grid layout. */
     private GridPane tableGrid() {
         GridPane grid = new GridPane();
         grid.setHgap(10);
@@ -2276,6 +2374,7 @@ public class MainUI extends Application {
         return grid;
     }
 
+    /** Adds a styled header row to a GridPane table. */
     private void addTableHeader(GridPane grid, int row, String... labels) {
         for (int col = 0; col < labels.length; col++) {
             Label label = new Label(labels[col]);
@@ -2284,6 +2383,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Adds one styled data row to a GridPane table. */
     private void addTableRow(GridPane grid, int row, String... values) {
         for (int col = 0; col < values.length; col++) {
             Label label = new Label(values[col]);
@@ -2293,6 +2393,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Creates the empty state UI component. */
     private Node createEmptyState(String text) {
         Label label = new Label(text);
         label.setWrapText(true);
@@ -2301,6 +2402,7 @@ public class MainUI extends Application {
         return label;
     }
 
+    /** Builds the session view models data model. */
     private List<SessionViewModel> buildSessionViewModels() {
         List<String> ids = new ArrayList<>(sessionMetaMap.keySet());
         for (String id : sessionPoints.keySet()) {
@@ -2342,6 +2444,7 @@ public class MainUI extends Application {
         return models;
     }
 
+    /** Copies listing fields into a derived listing view model. */
     private void applyListingData(SessionViewModel vm) {
         if (vm == null || vm.dealer == null || vm.car == null) {
             return;
@@ -2358,6 +2461,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Returns the highest price recorded for a session. */
     private Integer maxPointPrice(List<TrajectoryPoint> points) {
         if (points == null || points.isEmpty()) {
             return null;
@@ -2369,6 +2473,7 @@ public class MainUI extends Application {
         return max > 0 ? (int) Math.round(max) : null;
     }
 
+    /** Builds the agent view models data model. */
     private List<AgentViewModel> buildAgentViewModels() {
         List<SessionViewModel> sessions = buildSessionViewModels();
         Set<String> names = new LinkedHashSet<>();
@@ -2427,6 +2532,7 @@ public class MainUI extends Application {
         return models;
     }
 
+    /** Adds sanitized agent names from a source collection. */
     private void addCleanAgentNames(Set<String> target, Iterable<String> source) {
         for (String name : source) {
             String cleaned = cleanAgentName(name);
@@ -2436,6 +2542,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Normalizes broker-parsed agent names for display and matching. */
     private String cleanAgentName(String name) {
         if (name == null) {
             return null;
@@ -2449,6 +2556,7 @@ public class MainUI extends Application {
         return cleaned.isBlank() ? null : cleaned;
     }
 
+    /** Builds the listing view models data model. */
     private List<ListingViewModel> buildListingViewModels() {
         Map<String, ListingViewModel> listings = new LinkedHashMap<>();
         for (Map.Entry<String, ListingViewModel> entry : listingModelMap.entrySet()) {
@@ -2489,6 +2597,7 @@ public class MainUI extends Application {
         return new ArrayList<>(listings.values());
     }
 
+    /** Creates a mutable copy of a listing view model. */
     private ListingViewModel copyListing(ListingViewModel source) {
         ListingViewModel copy = new ListingViewModel();
         copy.car = source.car;
@@ -2500,6 +2609,7 @@ public class MainUI extends Application {
         return copy;
     }
 
+    /** Records the dealer listing data for reporting. */
     private void recordDealerListing(String dealer, String car, int price, int stock, NegotiationConfig config) {
         ListingViewModel listing = new ListingViewModel();
         listing.dealer = dealer;
@@ -2511,28 +2621,34 @@ public class MainUI extends Application {
         refreshNegotiationVisualiser();
     }
 
+    /** Removes listings owned by a dealer from dashboard state. */
     private void removeDealerListings(String dealer) {
         listingModelMap.entrySet().removeIf(entry -> dealer.equals(entry.getValue().dealer));
     }
 
+    /** Builds the stable dealer/car key for listing aggregation. */
     private String listingKey(String dealer, String car) {
         return valueOrNA(dealer) + "|" + valueOrNA(car);
     }
 
+    /** Returns whether buyer point is true. */
     private boolean isBuyerPoint(TrajectoryPoint point, SessionViewModel session) {
         if (point.event == TrajectoryEvent.START || point.event == TrajectoryEvent.OFFER) return true;
         return session != null && session.buyer != null && session.buyer.equals(point.agent);
     }
 
+    /** Returns whether dealer point is true. */
     private boolean isDealerPoint(TrajectoryPoint point, SessionViewModel session) {
         if (point.event == TrajectoryEvent.COUNTER || point.event == TrajectoryEvent.ACCEPT) return true;
         return session != null && session.dealer != null && session.dealer.equals(point.agent);
     }
 
+    /** Returns whether outcome event is true. */
     private boolean isOutcomeEvent(TrajectoryEvent event) {
         return event == TrajectoryEvent.ACCEPT || event == TrajectoryEvent.WALKAWAY;
     }
 
+    /** Adds averaged concession points to a chart series. */
     private void addAverageSeriesData(XYChart.Series<Number, Number> series, Map<Integer, double[]> values) {
         List<Integer> keys = new ArrayList<>(values.keySet());
         Collections.sort(keys);
@@ -2542,6 +2658,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Calculates average movement between consecutive trajectory points. */
     private double averageMovement(List<TrajectoryPoint> points) {
         if (points.size() < 2) return 0;
         List<TrajectoryPoint> sorted = new ArrayList<>(points);
@@ -2551,18 +2668,21 @@ public class MainUI extends Application {
         return total / (sorted.size() - 1);
     }
 
+    /** Returns the shared ComboBox style string. */
     private String comboBoxStyle() {
         return "-fx-font-size: 12; -fx-font-family: " + FONT_FAMILY + "; -fx-background-color: " + SURFACE
                 + "; -fx-border-color: " + BORDER_SUBTLE
                 + "; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 2 6;";
     }
 
+    /** Creates a compact label for legends and helper text. */
     private Label makeSmallLabel(String text) {
         Label label = new Label(text);
         label.setStyle("-fx-font-size: 12; -fx-font-weight: 700; -fx-text-fill: " + TEXT_MUTED + ";");
         return label;
     }
 
+    /** Creates the badge UI component. */
     private Label createBadge(String text, String color) {
         Label badge = new Label(text);
         badge.setStyle("-fx-font-size: 11; -fx-font-weight: 800; -fx-text-fill: white;"
@@ -2570,16 +2690,19 @@ public class MainUI extends Application {
         return badge;
     }
 
+    /** Selects a display color for an outcome status. */
     private String outcomeColor(String outcome) {
         if ("ACCEPTED".equals(outcome)) return SUCCESS_GREEN;
         if ("NEGOTIATING".equals(outcome)) return WARNING_ORANGE;
         return ERROR_RED;
     }
 
+    /** Shortens a label while preserving recognizable text. */
     private String shortLabel(String value, String fallback) {
         return shortLabel(value, fallback, 18);
     }
 
+    /** Shortens a label while preserving recognizable text. */
     private String shortLabel(String value, String fallback, int maxLength) {
         String label = value != null && !value.isBlank() ? value : fallback;
         if (label == null) {
@@ -2588,6 +2711,7 @@ public class MainUI extends Application {
         return label.length() > maxLength ? label.substring(0, Math.max(1, maxLength - 1)) + "..." : label;
     }
 
+    /** Converts a trajectory event into a round-log action label. */
     private String actionLabel(TrajectoryEvent event) {
         if (event == TrajectoryEvent.START) return "initial offer";
         if (event == TrajectoryEvent.OFFER) return "buyer offer";
@@ -2597,6 +2721,7 @@ public class MainUI extends Application {
         return "price update";
     }
 
+    /** Builds display initials from an agent name. */
     private String initials(String name) {
         if (name == null || name.isBlank()) return "?";
         String[] parts = name.split("[-_\\s]+");
@@ -2605,27 +2730,32 @@ public class MainUI extends Application {
         return (first + second).toUpperCase();
     }
 
+    /** Formats a price value as Malaysian Ringgit. */
     private String money(Integer value) {
         return value == null ? "N/A" : "RM " + value;
     }
 
+    /** Formats a price value as Malaysian Ringgit. */
     private String money(Double value) {
         return value == null ? "N/A" : String.format("RM %.0f", value);
     }
 
+    /** Formats a price value as Malaysian Ringgit. */
     private String money(double value) {
         return String.format("RM %.0f", value);
     }
 
+    /** Formats a signed price delta as Malaysian Ringgit. */
     private String signedMoney(double value) {
         return (value >= 0 ? "+" : "-") + money(Math.abs(value));
     }
 
 
+    /** Updates the dealer status display state. */
     private void updateDealerStatus() {
         if (dealerCount == 0) {
             dealerStatusLabel
-                    .setText("Go to Dealer Portal → Register at least ONE dealer with car inventory (Required first!)");
+                    .setText("Go to Dealer Portal â†’ Register at least ONE dealer with car inventory (Required first!)");
             dealerStatusLabel.setStyle("-fx-font-size: 13; -fx-text-fill: " + ERROR_RED + "; -fx-font-weight: bold;");
         } else {
             dealerStatusLabel.setText("/ " + dealerCount + " dealer agent(s) registered - Ready to accept buyers!");
@@ -2634,9 +2764,10 @@ public class MainUI extends Application {
         }
     }
 
+    /** Updates the buyer status display state. */
     private void updateBuyerStatus() {
         if (buyerCount == 0) {
-            updateBuyerStatus.setText("Go to Buyer Portal → Register buyer(s) with desired car & budget");
+            updateBuyerStatus.setText("Go to Buyer Portal â†’ Register buyer(s) with desired car & budget");
             updateBuyerStatus.setStyle("-fx-font-size: 13; -fx-text-fill: " + ERROR_RED + "; -fx-font-weight: bold;");
         } else {
             updateBuyerStatus.setText("/ " + buyerCount + " buyer agent(s) registered - Ready to accept dealers!");
@@ -2645,6 +2776,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Creates the stat card UI component. */
     private VBox createStatCard(String title, Label valueLabel, String color) {
         VBox card = new VBox(4);
         card.setMinHeight(96);
@@ -2661,12 +2793,14 @@ public class MainUI extends Application {
         return card;
     }
 
+    /** Creates the section label UI component. */
     private Label createSectionLabel(String text) {
         Label label = new Label(text);
         label.setStyle("-fx-font-size: 13; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
         return label;
     }
 
+    /** Creates the checklist item UI component. */
     private Label createChecklistItem(String text) {
         Label label = new Label(text);
         label.setWrapText(true);
@@ -2675,6 +2809,7 @@ public class MainUI extends Application {
         return label;
     }
 
+    /** Creates the buyer view UI component. */
     private VBox createBuyerView(UILogger logger) {
         VBox box = new VBox(18);
         box.setPadding(new Insets(4));
@@ -2722,7 +2857,7 @@ public class MainUI extends Application {
         form.add(buyerName, 1, 0);
         form.add(makeFieldLabel("Desired Car", "Car model to search for"), 0, 1);
         form.add(carModel, 1, 1);
-        form.add(makeFieldLabel("Max Budget (RM)", "Upper limit — buyer opens at ~70%"), 0, 2);
+        form.add(makeFieldLabel("Max Budget (RM)", "Upper limit â€” buyer opens at ~70%"), 0, 2);
         form.add(budget, 1, 2);
 
         CheckBox manualControlCheck = new CheckBox("Manual Negotiation Mode (Wait for my input)");
@@ -2736,17 +2871,17 @@ public class MainUI extends Application {
             String car = carModel.getValue() != null ? carModel.getValue() : "";
             String budgetStr = budget.getText().trim();
             if (name.isEmpty() || car.isEmpty() || budgetStr.isEmpty()) {
-                showAlert("⚠️ All fields are required!", Alert.AlertType.WARNING);
+                showAlert("âš ï¸ All fields are required!", Alert.AlertType.WARNING);
                 return;
             }
             if (dealerCount == 0) {
-                showAlert("❌ No dealers registered!\nPlease register a dealer first.", Alert.AlertType.ERROR);
+                showAlert("âŒ No dealers registered!\nPlease register a dealer first.", Alert.AlertType.ERROR);
                 return;
             }
             try {
                 double b = Double.parseDouble(budgetStr);
                 if (b <= 0) {
-                    showAlert("❌ Budget must be > 0", Alert.AlertType.WARNING);
+                    showAlert("âŒ Budget must be > 0", Alert.AlertType.WARNING);
                     return;
                 }
                 boolean isManual = manualControlCheck.isSelected();
@@ -2763,16 +2898,16 @@ public class MainUI extends Application {
                 waitingBuyerAgents.add(name);
                 updateNegotiationControlStatus();
                 refreshNegotiationVisualiser();
-                logger.log("Buyer '" + name + "' added — " + car + " @ RM" + budgetStr);
+                logger.log("Buyer '" + name + "' added â€” " + car + " @ RM" + budgetStr);
                 buyerName.clear();
                 carModel.setValue(null);
                 budget.clear();
-                showAlert("✅ Buyer " + name + " added. Press ▶ Start.", Alert.AlertType.INFORMATION);
+                showAlert("âœ… Buyer " + name + " added. Press â–¶ Start.", Alert.AlertType.INFORMATION);
             } catch (NumberFormatException ex) {
-                showAlert("❌ Budget must be a valid number.", Alert.AlertType.ERROR);
+                showAlert("âŒ Budget must be a valid number.", Alert.AlertType.ERROR);
             } catch (Exception ex) {
-                logger.log("❌ Error: " + ex.getMessage());
-                showAlert("❌ " + ex.getMessage(), Alert.AlertType.ERROR);
+                logger.log("âŒ Error: " + ex.getMessage());
+                showAlert("âŒ " + ex.getMessage(), Alert.AlertType.ERROR);
             }
         });
 
@@ -2784,6 +2919,7 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates a standardized form-field label. */
     private VBox makeFieldLabel(String title, String subtitle) {
         Label titleLbl = new Label(title);
         titleLbl.setStyle("-fx-font-size: 13; -fx-text-fill: " + DARK_TEXT + "; -fx-font-weight: 600;");
@@ -2792,6 +2928,7 @@ public class MainUI extends Application {
         return new VBox(2, titleLbl, subLbl);
     }
 
+    /** Applies shared spacing and sizing to a participant form. */
     private void configurePortalForm(GridPane form) {
         form.setHgap(24);
         form.setVgap(16);
@@ -2855,13 +2992,13 @@ public class MainUI extends Application {
         clearSessionBtn.setOnAction(e -> clearSession());
         sniffBtn.setOnAction(e -> launchSniffer(msg -> logArea.appendText(msg + "\n")));
 
-        // ── Speed slider ──────────────────────────────────────────────────────
-        // Tick positions 0-6 map to: 0.25×, 0.5×, 1× (default), 2×, 5×
+        // â”€â”€ Speed slider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Tick positions 0-6 map to: 0.25Ã—, 0.5Ã—, 1Ã— (default), 2Ã—, 5Ã—
         // Delay in ms: 4000, 2000, 1000, 500, 200, 100, 50
         long[] speedDelays = { 4000, 2000, 1000, 500, 200, 100, 50 };
-        String[] speedLabels = { "0.25×", "0.5×", "1×", "2×", "5×", "10×", "20×" };
+        String[] speedLabels = { "0.25Ã—", "0.5Ã—", "1Ã—", "2Ã—", "5Ã—", "10Ã—", "20Ã—" };
 
-        Slider speedSlider = new Slider(0, speedDelays.length - 1, 2); // default = index 2 → 1000 ms
+        Slider speedSlider = new Slider(0, speedDelays.length - 1, 2); // default = index 2 â†’ 1000 ms
         speedSlider.setMajorTickUnit(1);
         speedSlider.setMinorTickCount(0);
         speedSlider.setSnapToTicks(true);
@@ -2870,7 +3007,7 @@ public class MainUI extends Application {
         speedSlider.setPrefWidth(130);
         speedSlider.setStyle("-fx-padding: 0 4;");
 
-        Label speedLabel = new Label("1×");
+        Label speedLabel = new Label("1Ã—");
         speedLabel.setStyle("-fx-font-size: 11; -fx-font-weight: 700; -fx-text-fill: " + TEXT_MUTED
                 + "; -fx-min-width: 34; -fx-alignment: center;");
         Tooltip speedTip = new Tooltip("Cycle delay: 1000 ms");
@@ -2890,7 +3027,7 @@ public class MainUI extends Application {
         HBox speedBox = new HBox(4, speedIconLabel, speedSlider, speedLabel);
         speedBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         speedBox.setPadding(new Insets(0, 6, 0, 6));
-        // ─────────────────────────────────────────────────────────────────────
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
         Separator sep = new Separator(javafx.geometry.Orientation.VERTICAL);
         sep.setPadding(new Insets(0, 4, 0, 4));
@@ -2922,6 +3059,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Creates the bar button UI component. */
     private Button createBarButton(String text, String color) {
         Button btn = new Button(text);
         btn.setStyle("-fx-font-size: 12; -fx-font-family: " + FONT_FAMILY + "; -fx-font-weight: 800; -fx-padding: 8 16; "
@@ -2933,6 +3071,7 @@ public class MainUI extends Application {
         return btn;
     }
 
+    /** Creates the demo scenario UI component. */
     private void createDemoScenario() {
         long demoId = demoScenarioCounter.incrementAndGet();
         NegotiationConfig config = buildDemoNegotiationConfig();
@@ -2970,10 +3109,11 @@ public class MainUI extends Application {
                     + demoBuyerCount + " waiting buyers. Press Start to stress test negotiation and strategy switching.");
             showAlert("Demo scenario added. Press Start to begin negotiation.", Alert.AlertType.INFORMATION);
         } catch (Exception ex) {
-            showAlert("❌ Error creating demo scenario: " + ex.getMessage(), Alert.AlertType.ERROR);
+            showAlert("âŒ Error creating demo scenario: " + ex.getMessage(), Alert.AlertType.ERROR);
         }
     }
 
+    /** Builds the demo negotiation config data model. */
     private NegotiationConfig buildDemoNegotiationConfig() {
         NegotiationConfig base = buildNegotiationConfig();
         return new NegotiationConfig(
@@ -2990,6 +3130,7 @@ public class MainUI extends Application {
                         : base.getSwitchStrategy());
     }
 
+    /** Builds the overdrive negotiation config data model. */
     private NegotiationConfig buildOverdriveNegotiationConfig(NegotiationConfig base) {
         return new NegotiationConfig(
                 NegotiationConfig.Strategy.LINEAR,
@@ -3004,6 +3145,7 @@ public class MainUI extends Application {
                 NegotiationConfig.Strategy.CONCEDER);
     }
 
+    /** Creates the demo dealer UI component. */
     private void createDemoDealer(String name, String car, String price, String stock, NegotiationConfig config)
             throws Exception {
         cc.createNewAgent(name, "org.example.agents.DealerAgent",
@@ -3014,6 +3156,7 @@ public class MainUI extends Application {
         recordDealerListing(name, car, Integer.parseInt(price), Integer.parseInt(stock), config);
     }
 
+    /** Creates the demo buyer UI component. */
     private void createDemoBuyer(String name, String car, String budget, NegotiationConfig config) throws Exception {
         cc.createNewAgent(name, "org.example.agents.BuyerAgent",
                 new Object[] { car, budget, appLogger, config, true }).start();
@@ -3025,6 +3168,7 @@ public class MainUI extends Application {
         refreshNegotiationVisualiser();
     }
 
+    /** Creates the dealer view UI component. */
     private VBox createDealerView(UILogger logger) {
         VBox box = new VBox(18);
         box.setPadding(new Insets(4));
@@ -3084,7 +3228,7 @@ public class MainUI extends Application {
             String stock = stockField.getText().trim();
 
             if (name.isEmpty() || car.isEmpty() || price.isEmpty() || stock.isEmpty()) {
-                showAlert("⚠️ All fields are required!", Alert.AlertType.WARNING);
+                showAlert("âš ï¸ All fields are required!", Alert.AlertType.WARNING);
                 return;
             }
 
@@ -3092,12 +3236,12 @@ public class MainUI extends Application {
                 // Validate price is numeric
                 double priceAmount = Double.parseDouble(price);
                 if (priceAmount <= 0) {
-                    showAlert("❌ Price must be greater than 0", Alert.AlertType.WARNING);
+                    showAlert("âŒ Price must be greater than 0", Alert.AlertType.WARNING);
                     return;
                 }
                 int stockAmount = Integer.parseInt(stock);
                 if (stockAmount <= 0) {
-                    showAlert("❌ Stock must be at least 1", Alert.AlertType.WARNING);
+                    showAlert("âŒ Stock must be at least 1", Alert.AlertType.WARNING);
                     return;
                 }
 
@@ -3112,13 +3256,13 @@ public class MainUI extends Application {
                 carModel.setValue(null);
                 retailPrice.clear();
                 stockField.clear();
-                showAlert("✅ Dealer " + name + " registered with " + stock + " unit(s)!", Alert.AlertType.INFORMATION);
+                showAlert("âœ… Dealer " + name + " registered with " + stock + " unit(s)!", Alert.AlertType.INFORMATION);
                 ;
             } catch (NumberFormatException ex) {
-                showAlert("❌ Price and Stock must be valid numbers", Alert.AlertType.ERROR);
+                showAlert("âŒ Price and Stock must be valid numbers", Alert.AlertType.ERROR);
             } catch (Exception ex) {
-                logger.log("❌ Error creating dealer: " + ex.getMessage());
-                showAlert("❌ Error: " + ex.getMessage(), Alert.AlertType.ERROR);
+                logger.log("âŒ Error creating dealer: " + ex.getMessage());
+                showAlert("âŒ Error: " + ex.getMessage(), Alert.AlertType.ERROR);
             }
         });
 
@@ -3132,6 +3276,7 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates the market analysis view UI component. */
     private VBox createMarketAnalysisView() {
         VBox box = new VBox(18);
         box.setPadding(new Insets(24));
@@ -3146,17 +3291,17 @@ public class MainUI extends Application {
         analysisArea.setStyle(textAreaStyle(true));
         analysisArea.setText(
                 "MARKET ANALYTICS DASHBOARD\n"
-                        + "═══════════════════════════════════════════════\n\n"
+                        + "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n"
                         + "SYSTEM OVERVIEW:\n"
-                        + "  ✓ Broker-Routed Multi-Agent Negotiation (JADE)\n"
-                        + "  ✓ All messages relay through BrokerAgent\n"
-                        + "  ✓ Session-based negotiation with unique IDs\n"
-                        + "  ✓ Cycle-based concession using SpaceControl\n\n"
+                        + "  âœ“ Broker-Routed Multi-Agent Negotiation (JADE)\n"
+                        + "  âœ“ All messages relay through BrokerAgent\n"
+                        + "  âœ“ Session-based negotiation with unique IDs\n"
+                        + "  âœ“ Cycle-based concession using SpaceControl\n\n"
                         + "BROKER FEE POLICY:\n"
-                        + "  • Fixed Session Fee:  RM " + (int) appConfig.fixedFee() + " (charged at session start)\n"
-                        + "  • Commission:         " + (int) (appConfig.commissionRate() * 100) + "% of final sale price (on deal only)\n"
-                        + "  • No-deal sessions:   Fixed fee still collected\n"
-                        + "  • Example: RM 100k sale = RM 5,000 commission + RM 50 fee\n\n"
+                        + "  â€¢ Fixed Session Fee:  RM " + (int) appConfig.fixedFee() + " (charged at session start)\n"
+                        + "  â€¢ Commission:         " + (int) (appConfig.commissionRate() * 100) + "% of final sale price (on deal only)\n"
+                        + "  â€¢ No-deal sessions:   Fixed fee still collected\n"
+                        + "  â€¢ Example: RM 100k sale = RM 5,000 commission + RM 50 fee\n\n"
                         + "NEGOTIATION PROTOCOL (Broker-Routed):\n"
                         + "  1. Dealer registers car listing with broker\n"
                         + "  2. Buyer sends BUYER_SEARCH to broker\n"
@@ -3168,14 +3313,14 @@ public class MainUI extends Application {
                         + "  8. Buyer replies BUYER_COUNTER or BUYER_WALKAWAY to broker\n"
                         + "  9. On DEALER_ACCEPT: broker charges commission, notifies buyer\n\n"
                         + "CYCLE-BASED CONCESSION (SPACE CONTROL):\n"
-                        + "  • Deadline:   50 market cycles (configurable)\n"
-                        + "  • Dealer:     Lowers ask price as cycles increase\n"
-                        + "  • Buyer:      Raises willing offer as cycles increase\n"
-                        + "  • Formula:    Price(t) = P0 - (P0 - Pres) * (t/T)^\u03b2\n"
-                        + "  • Strategies: BOULWARE (β=2), LINEAR (β=1), CONCEDER (β=0.45)\n\n"
+                        + "  â€¢ Deadline:   50 market cycles (configurable)\n"
+                        + "  â€¢ Dealer:     Lowers ask price as cycles increase\n"
+                        + "  â€¢ Buyer:      Raises willing offer as cycles increase\n"
+                        + "  â€¢ Formula:    Price(t) = P0 - (P0 - Pres) * (t/T)^\u03b2\n"
+                        + "  â€¢ Strategies: BOULWARE (Î²=2), LINEAR (Î²=1), CONCEDER (Î²=0.45)\n\n"
                         + "CURRENT METRICS: See Dashboard and Sessions views.\n"
                         + "SETTINGS:        Adjust parameters in the panel above.\n"
-                        + "═══════════════════════════════════════════════");
+                        + "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
 
         /*
          * ScrollPane scrollPane = new ScrollPane(analysisArea);
@@ -3194,6 +3339,7 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates the simulation control panel UI component. */
     private VBox createSimulationControlPanel() {
         VBox panel = new VBox(15);
         panel.setPadding(new Insets(20));
@@ -3277,6 +3423,7 @@ public class MainUI extends Application {
         return panel;
     }
 
+    /** Builds the negotiation config data model. */
     private NegotiationConfig buildNegotiationConfig() {
         if (strategyChoice == null) {
             return NegotiationConfig.defaults();
@@ -3301,6 +3448,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Converts a percent text field into a decimal ratio. */
     private double percentFieldToRatio(TextField field, int fallbackPercent) {
         String raw = field.getText().trim();
         double value = raw.isEmpty() ? fallbackPercent : Double.parseDouble(raw);
@@ -3308,6 +3456,7 @@ public class MainUI extends Application {
         return value / 100.0;
     }
 
+    /** Creates the activity log view UI component. */
     private VBox createActivityLogView() {
         VBox box = new VBox(16);
         box.setPadding(new Insets(4));
@@ -3362,6 +3511,7 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates the failures view UI component. */
     private VBox createFailuresView() {
         VBox box = new VBox(16);
         box.setPadding(new Insets(4));
@@ -3411,7 +3561,7 @@ public class MainUI extends Application {
         return box;
     }
 
-    /** Sessions tab — live log of session start, settle, and fail events */
+    /** Sessions tab â€” live log of session start, settle, and fail events */
     private VBox createSessionsView() {
         VBox box = new VBox(18);
         box.setPadding(new Insets(24));
@@ -3423,7 +3573,7 @@ public class MainUI extends Application {
         // Mini stat row
         HBox miniStats = new HBox(16);
         VBox activeCard = createStatCard("Active", activeSessionsLabelMini, "#8b5cf6");
-        VBox feesCard = createStatCard("💵 Fixed Fees", fixedFeesLabelMini, "#06b6d4");
+        VBox feesCard = createStatCard("ðŸ’µ Fixed Fees", fixedFeesLabelMini, "#06b6d4");
         VBox commCard = createStatCard("Commission (5% deals)", commissionLabelMini, SUCCESS_GREEN);
         for (VBox c : new VBox[] { activeCard, feesCard, commCard }) {
             c.setPrefWidth(180);
@@ -3461,12 +3611,13 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Creates the manual play view UI component. */
     private VBox createManualPlayView() {
         VBox box = new VBox(16);
         box.setPadding(new Insets(24));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
-        Label title = new Label("🎮 Manual Mode");
+        Label title = new Label("ðŸŽ® Manual Mode");
         title.setStyle("-fx-font-size: 25; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
 
         HBox topBox = new HBox(15);
@@ -3572,12 +3723,14 @@ public class MainUI extends Application {
         return box;
     }
 
+    /** Disables manual counter controls when no counter is active. */
     private void disableCounterControls() {
         manualSendCounterBtn.setDisable(true);
         manualAcceptDealBtn.setDisable(true);
         manualWalkAwayBtn.setDisable(true);
     }
 
+    /** Returns whether positive integer is true. */
     private boolean isPositiveInteger(String value) {
         try {
             return Integer.parseInt(value.trim()) > 0;
@@ -3586,6 +3739,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Handles the manual prompt log event. */
     private void handleManualPromptLog(String msg) {
         try {
             int promptIdx = msg.indexOf("[MANUAL_PROMPT]");
@@ -3635,6 +3789,7 @@ public class MainUI extends Application {
         }
     }
 
+    /** Creates the styled text field UI component. */
     private TextField createStyledTextField(String prompt) {
         TextField tf = new TextField();
         tf.setPromptText(prompt);
@@ -3649,6 +3804,7 @@ public class MainUI extends Application {
         return tf;
     }
 
+    /** Creates the styled car combo box UI component. */
     private ComboBox<String> createStyledCarComboBox() {
         ComboBox<String> comboBox = new ComboBox<>();
         comboBox.getItems().addAll(CAR_MODELS);
@@ -3666,6 +3822,7 @@ public class MainUI extends Application {
         return comboBox;
     }
 
+    /** Creates the styled button UI component. */
     private Button createStyledButton(String text, String color) {
         Button btn = new Button(text);
         btn.setMinHeight(38);
@@ -3681,14 +3838,16 @@ public class MainUI extends Application {
         return btn;
     }
 
+    /** Shows the alert view or prompt. */
     private void showAlert(String message, Alert.AlertType type) {
         Alert alert = new Alert(type);
-        alert.setTitle(type == Alert.AlertType.ERROR ? "❌ Error" : "ℹ️ Information");
+        alert.setTitle(type == Alert.AlertType.ERROR ? "âŒ Error" : "â„¹ï¸ Information");
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();
     }
 
+    /** Returns a display-safe value or N/A. */
     private String valueOrNA(String value) {
         return value != null && !value.isBlank() ? value : "N/A";
     }
@@ -3697,3 +3856,4 @@ public class MainUI extends Application {
         void log(String message);
     }
 }
+

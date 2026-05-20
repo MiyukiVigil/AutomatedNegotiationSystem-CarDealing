@@ -1,1 +1,1 @@
-http://miyuki-cachy:7778/acc
+http://192.168.0.226:7778/acc

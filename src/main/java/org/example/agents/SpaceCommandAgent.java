@@ -4,7 +4,9 @@ import jade.core.AID;
 import jade.core.Agent;
 import jade.lang.acl.ACLMessage;
 
+/** Short-lived helper agent that sends one control ACL message to a target agent. */
 public class SpaceCommandAgent extends Agent {
+    /** Reads command arguments, sends the ACL control message, and terminates. */
     @Override
     protected void setup() {
         Object[] args = getArguments();
