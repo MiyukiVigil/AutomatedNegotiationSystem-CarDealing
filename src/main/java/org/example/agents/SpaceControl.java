@@ -13,7 +13,7 @@ public class SpaceControl extends Agent {
     private final Set<AID> activeAgents = new HashSet<>();
     private final Set<AID> completeAgents = new HashSet<>();
     private int cycleCount = 0;
-    private boolean isPaused = false;
+    private boolean isPaused = true;
     private boolean cycleAdvancePending = false;
     /** Inter-cycle delay in milliseconds controlled by the UI speed slider. */
     private long autoCycleDelayMs = 1000;
@@ -39,10 +39,6 @@ public class SpaceControl extends Agent {
                             if ("REGISTER".equals(ontology)) {
                                 activeAgents.add(msg.getSender());
                                 log("Registered: " + msg.getSender().getLocalName());
-
-                                if (!isPaused && activeAgents.size() == 1 && cycleCount == 0) {
-                                    broadcastCycle(1);
-                                }
                             } else if ("DEREGISTER".equals(ontology)) {
                                 activeAgents.remove(msg.getSender());
                                 // keep cycling after an agent deregisters if others are still active
@@ -85,7 +81,7 @@ public class SpaceControl extends Agent {
                                 activeAgents.clear();
                                 completeAgents.clear();
                                 cycleCount = 0;
-                                isPaused = false;
+                                isPaused = true;
                                 cycleAdvancePending = false;
                                 log("RESET: Space Control cycle and registered agents cleared.");
                             }

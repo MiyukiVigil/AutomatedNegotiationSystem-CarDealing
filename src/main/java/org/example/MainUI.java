@@ -97,7 +97,8 @@ public class MainUI extends Application {
     private ComboBox<String> visualiserSessionSelect;
     private ComboBox<String> visualiserAgentTypeSelect;
     private Button playPauseBtn;
-    private boolean isAutoPlay = true;
+    private boolean simulationStarted = false;
+    private boolean isAutoPlay = false;
     private ComboBox<String> strategyChoice;
     private ComboBox<String> switchStrategyChoice;
     private TextField deadlineCyclesField;
@@ -985,11 +986,35 @@ public class MainUI extends Application {
 
     /** Toggles automatic cycle advancement. */
     private void toggleAutoplay() {
-        isAutoPlay = !isAutoPlay;
-        if (playPauseBtn != null) {
-            playPauseBtn.setText(isAutoPlay ? "Pause" : "Resume");
+        if (!simulationStarted) {
+            return;
         }
-        sendSpaceCommand(isAutoPlay ? "RESUME" : "PAUSE");
+        isAutoPlay = !isAutoPlay;
+        updatePlaybackButtonState();
+        sendSimulationPauseCommand(isAutoPlay);
+    }
+
+    /** Updates the pause/resume button label and availability. */
+    private void updatePlaybackButtonState() {
+        if (playPauseBtn == null) {
+            return;
+        }
+        playPauseBtn.setText(isAutoPlay ? "Pause" : "Resume");
+        playPauseBtn.setDisable(!simulationStarted);
+        playPauseBtn.setOpacity(simulationStarted ? 1.0 : 0.45);
+    }
+
+    /** Sends pause or resume to the cycle controller and active negotiation agents. */
+    private void sendSimulationPauseCommand(boolean resume) {
+        sendSpaceCommand(resume ? "RESUME" : "PAUSE");
+        String agentCommand = resume ? "RESUME_NEGOTIATION" : "PAUSE_NEGOTIATION";
+        sendBrokerCommand(agentCommand);
+        for (String buyer : new ArrayList<>(buyerAgents)) {
+            sendAgentCommand(buyer, agentCommand);
+        }
+        for (String dealer : new ArrayList<>(dealerAgents)) {
+            sendAgentCommand(dealer, agentCommand);
+        }
     }
 
     /** Updates the negotiation control status display state. */
@@ -1232,7 +1257,8 @@ public class MainUI extends Application {
         totalCommission = 0;
         activeSessions = 0;
         currentCycle = 0;
-        isAutoPlay = true;
+        simulationStarted = false;
+        isAutoPlay = false;
 
         buyerAgents.clear();
         dealerAgents.clear();
@@ -1259,9 +1285,7 @@ public class MainUI extends Application {
         fixedFeesLabelMini.setText("RM 0");
         commissionLabel.setText("RM 0");
         commissionLabelMini.setText("RM 0");
-        if (playPauseBtn != null) {
-            playPauseBtn.setText("Pause");
-        }
+        updatePlaybackButtonState();
 
         logArea.clear();
         if (dashboardEventsArea != null) dashboardEventsArea.clear();
@@ -2938,8 +2962,8 @@ public class MainUI extends Application {
                 + "-fx-border-color: #bae6fd; -fx-border-width: 0 0 1 0;");
 
         Button demoBtn = createBarButton("Demo Setup", PRIMARY_BLUE);
-        Button startBtn = createBarButton("Start", SUCCESS_GREEN);
-        playPauseBtn = createBarButton("Pause", WARNING_ORANGE);
+        Button startBtn = createBarButton("Start Buyers", SUCCESS_GREEN);
+        playPauseBtn = createBarButton(isAutoPlay ? "Pause" : "Resume", WARNING_ORANGE);
         Button stepBtn = createBarButton("Step Cycle", ACCENT_BLUE);
         Button stopBtn = createBarButton("Stop", ERROR_RED);
         Button clearSessionBtn = createBarButton("Clear Session", "#64748b");
@@ -2955,9 +2979,10 @@ public class MainUI extends Application {
                 sendAgentCommand(b, "START_NEGOTIATION");
             loggerLog("Started " + waitingBuyerAgents.size() + " buyer(s).");
             waitingBuyerAgents.clear();
+            simulationStarted = true;
             isAutoPlay = true;
-            playPauseBtn.setText("Pause");
-            sendSpaceCommand("RESUME");
+            updatePlaybackButtonState();
+            sendSimulationPauseCommand(true);
             updateNegotiationControlStatus();
             refreshNegotiationVisualiser();
         });
@@ -3018,6 +3043,7 @@ public class MainUI extends Application {
         sep2.setPadding(new Insets(0, 4, 0, 4));
 
         negotiationControlStatusLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + ";");
+        updatePlaybackButtonState();
         updateNegotiationControlStatus();
 
         updateDealerStatus();

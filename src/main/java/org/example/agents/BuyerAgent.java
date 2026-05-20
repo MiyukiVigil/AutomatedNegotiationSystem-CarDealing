@@ -59,6 +59,9 @@ public class BuyerAgent extends Agent {
     private int    currentWillingOffer;
     private NegotiationConfig.Strategy activeStrategy;
     private NegotiationTerms currentTerms;
+    private boolean negotiationPaused = false;
+    private final List<ACLMessage> pausedMessages = new ArrayList<>();
+    private final List<Runnable> pausedActions = new ArrayList<>();
 
     // ── Inner types ───────────────────────────────────────────────────────────
     /** Shortlisted dealer candidate returned by the broker. */
@@ -111,6 +114,22 @@ public class BuyerAgent extends Agent {
                 if (msg == null) { block(); return; }
 
                 String ont = msg.getOntology() == null ? "" : msg.getOntology();
+
+                if ("PAUSE_NEGOTIATION".equals(ont)) {
+                    negotiationPaused = true;
+                    log("STATUS: Negotiation paused.");
+                    return;
+                }
+                if ("RESUME_NEGOTIATION".equals(ont)) {
+                    negotiationPaused = false;
+                    log("STATUS: Negotiation resumed.");
+                    resumePausedWork();
+                    return;
+                }
+                if (negotiationPaused && isPausableMessage(ont)) {
+                    pausedMessages.add((ACLMessage) msg.clone());
+                    return;
+                }
 
                 switch (ont) {
                     case "START_NEGOTIATION":
@@ -231,7 +250,7 @@ public class BuyerAgent extends Agent {
                         + "/" + config.getMaxSearchRetries());
                 addBehaviour(new WakerBehaviour(this, 1500) {
                     /** Retries broker search after a short delay. */
-                    @Override protected void onWake() { searchBroker(); }
+                    @Override protected void onWake() { runWhenResumed(() -> searchBroker()); }
                 });
             }
             return;
@@ -324,7 +343,7 @@ public class BuyerAgent extends Agent {
             /** Sends the shortlist after a short delay for readable demo pacing. */
             @Override
             protected void onWake() {
-                send(shortlist);
+                runWhenResumed(() -> send(shortlist));
             }
         });
 
@@ -439,9 +458,65 @@ public class BuyerAgent extends Agent {
             /** Sends the buyer counter after a short delay for readable demo pacing. */
             @Override
             protected void onWake() {
-                send(counter);
+                runWhenResumed(() -> send(counter));
             }
         });
+    }
+
+    /** Returns true for messages that should wait while the simulation is paused. */
+    private boolean isPausableMessage(String ontology) {
+        return "BROKER_SHORTLIST".equals(ontology)
+                || "BROKER_RELAY_COUNTER".equals(ontology)
+                || "BROKER_RELAY_ACCEPT".equals(ontology)
+                || "BROKER_RELAY_SOLD_OUT".equals(ontology)
+                || "BROKER_SESSION_REJECTED".equals(ontology)
+                || "MANUAL_ACTION".equals(ontology);
+    }
+
+    /** Runs a delayed action immediately, or holds it until the simulation resumes. */
+    private void runWhenResumed(Runnable action) {
+        if (negotiationPaused) {
+            pausedActions.add(action);
+            return;
+        }
+        action.run();
+    }
+
+    /** Replays held delayed actions and inbound messages when the simulation resumes. */
+    private void resumePausedWork() {
+        while (!pausedActions.isEmpty() && !negotiationPaused) {
+            pausedActions.remove(0).run();
+        }
+        while (!pausedMessages.isEmpty() && !negotiationPaused) {
+            handleHeldMessage(pausedMessages.remove(0));
+        }
+    }
+
+    /** Dispatches a message that arrived while paused. */
+    private void handleHeldMessage(ACLMessage msg) {
+        String ont = msg.getOntology() == null ? "" : msg.getOntology();
+        switch (ont) {
+            case "BROKER_SHORTLIST":
+                if (negotiationStarted) handleBrokerShortlist(msg);
+                break;
+            case "BROKER_RELAY_COUNTER":
+                if (negotiationStarted) handleBrokerRelayCounter(msg);
+                break;
+            case "BROKER_RELAY_ACCEPT":
+                if (negotiationStarted) handleBrokerRelayAccept(msg);
+                break;
+            case "BROKER_RELAY_SOLD_OUT":
+                if (negotiationStarted) handleBrokerRelaySoldOut(msg);
+                break;
+            case "BROKER_SESSION_REJECTED":
+                if (negotiationStarted) handleBrokerSessionRejected(msg);
+                break;
+            case "MANUAL_ACTION":
+                handleManualAction(msg);
+                break;
+            default:
+                break;
+        }
     }
 
     /** Send BUYER_WALKAWAY (FAILURE / BUYER_WALKAWAY) to broker */

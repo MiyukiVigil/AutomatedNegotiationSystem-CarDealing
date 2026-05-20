@@ -5,7 +5,9 @@ import jade.lang.acl.ACLMessage;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.OneShotBehaviour;
 import org.example.MainUI.UILogger;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -43,6 +45,9 @@ public class DealerAgent extends Agent {
     private int    latestCycle = 0;
     private NegotiationConfig.Strategy activeStrategy;
     private final Map<String, DealerSessionState> activeSessions = new LinkedHashMap<>();
+    private boolean negotiationPaused = false;
+    private final List<ACLMessage> pausedMessages = new ArrayList<>();
+    private final List<Runnable> pausedActions = new ArrayList<>();
     private static final int NARROW_PRICE_WINDOW = 10_000;
 
     /** Per-session state that isolates concurrent buyers for the same dealer. */
@@ -110,6 +115,22 @@ public class DealerAgent extends Agent {
                 if (msg == null) { block(); return; }
 
                 String ont = msg.getOntology() == null ? "" : msg.getOntology();
+
+                if ("PAUSE_NEGOTIATION".equals(ont)) {
+                    negotiationPaused = true;
+                    log("STATUS: Negotiation paused.");
+                    return;
+                }
+                if ("RESUME_NEGOTIATION".equals(ont)) {
+                    negotiationPaused = false;
+                    log("STATUS: Negotiation resumed.");
+                    resumePausedWork();
+                    return;
+                }
+                if (negotiationPaused && isPausableMessage(ont)) {
+                    pausedMessages.add((ACLMessage) msg.clone());
+                    return;
+                }
 
                 if ("CYCLE_UPDATE".equals(ont) || "START_CYCLE".equals(ont)) {
                     handleCycleUpdate(msg);
@@ -232,23 +253,25 @@ public class DealerAgent extends Agent {
                 /** Sends the acceptance and any sold-out notices after a short UI-friendly delay. */
                 @Override
                 protected void onWake() {
-                    send(accept);
-                    notifySpace();
-                    if (isStockOutTrigger) {
-                        // Notify broker of all sessions that can no longer be served
-                        if (!pendingSessionsCsv.isEmpty()) {
-                            ACLMessage soldOut = new ACLMessage(ACLMessage.INFORM);
-                            soldOut.addReceiver(new AID("broker", AID.ISLOCALNAME));
-                            soldOut.setOntology("DEALER_SOLD_OUT");
-                            soldOut.setContent(pendingSessionsCsv);
-                            send(soldOut);
-                            log("STATUS: Out of stock. Notifying broker of " +
-                                    pendingSessionsCsv.split(",").length + " pending session(s).");
-                        } else {
-                            log("STATUS: Out of stock. No pending sessions.");
+                    runWhenResumed(() -> {
+                        send(accept);
+                        notifySpace();
+                        if (isStockOutTrigger) {
+                            // Notify broker of all sessions that can no longer be served
+                            if (!pendingSessionsCsv.isEmpty()) {
+                                ACLMessage soldOut = new ACLMessage(ACLMessage.INFORM);
+                                soldOut.addReceiver(new AID("broker", AID.ISLOCALNAME));
+                                soldOut.setOntology("DEALER_SOLD_OUT");
+                                soldOut.setContent(pendingSessionsCsv);
+                                send(soldOut);
+                                log("STATUS: Out of stock. Notifying broker of " +
+                                        pendingSessionsCsv.split(",").length + " pending session(s).");
+                            } else {
+                                log("STATUS: Out of stock. No pending sessions.");
+                            }
+                            doDelete();
                         }
-                        doDelete();
-                    }
+                    });
                 }
             });
             log("DEAL CLOSED: [" + sessionId + "] RM" + buyerOffer + termsText(buyerTerms)
@@ -266,8 +289,10 @@ public class DealerAgent extends Agent {
                 /** Sends the counter-offer after a short UI-friendly delay. */
                 @Override
                 protected void onWake() {
-                    send(counter);
-                    notifySpace();
+                    runWhenResumed(() -> {
+                        send(counter);
+                        notifySpace();
+                    });
                 }
             });
             log("COUNTER: [" + sessionId + "] RM" + currentTargetPrice + termsText(counterTerms));
@@ -282,6 +307,34 @@ public class DealerAgent extends Agent {
         action.setOntology("ACTION_COMPLETED");
         action.addReceiver(new AID("space", AID.ISLOCALNAME));
         send(action);
+    }
+
+    /** Returns true for broker messages that should wait while the simulation is paused. */
+    private boolean isPausableMessage(String ontology) {
+        return "BROKER_INVITE".equals(ontology) || "BROKER_RELAY_OFFER".equals(ontology);
+    }
+
+    /** Runs a delayed action immediately, or holds it until the simulation resumes. */
+    private void runWhenResumed(Runnable action) {
+        if (negotiationPaused) {
+            pausedActions.add(action);
+            return;
+        }
+        action.run();
+    }
+
+    /** Replays held delayed actions and inbound broker messages when the simulation resumes. */
+    private void resumePausedWork() {
+        while (!pausedActions.isEmpty() && !negotiationPaused) {
+            pausedActions.remove(0).run();
+        }
+        while (!pausedMessages.isEmpty() && !negotiationPaused) {
+            ACLMessage held = pausedMessages.remove(0);
+            String ont = held.getOntology() == null ? "" : held.getOntology();
+            if ("BROKER_INVITE".equals(ont) || "BROKER_RELAY_OFFER".equals(ont)) {
+                handleBrokerOffer(held);
+            }
+        }
     }
 
     @Override

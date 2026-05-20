@@ -38,6 +38,8 @@ public class BrokerAgent extends Agent {
     private double totalRevenue    = 0;
     private int    noDealCount     = 0;
     private int    totalDealRounds = 0;
+    private boolean negotiationPaused = false;
+    private final List<ACLMessage> pausedMessages = new ArrayList<>();
 
     // ── Inner types ────────────────────────────────────────────────────────────
 
@@ -115,6 +117,22 @@ public class BrokerAgent extends Agent {
                 if (msg == null) { block(); return; }
 
                 String ont = msg.getOntology() == null ? "" : msg.getOntology();
+                if ("PAUSE_NEGOTIATION".equals(ont)) {
+                    negotiationPaused = true;
+                    log("STATUS: Negotiation paused.");
+                    return;
+                }
+                if ("RESUME_NEGOTIATION".equals(ont)) {
+                    negotiationPaused = false;
+                    log("STATUS: Negotiation resumed.");
+                    resumePausedWork();
+                    return;
+                }
+                if (negotiationPaused && isPausableMessage(ont)) {
+                    pausedMessages.add((ACLMessage) msg.clone());
+                    return;
+                }
+
                 switch (ont) {
                     case "":               handleDealerRegister(msg);  break;
                     case "BUYER_SEARCH":   handleBuyerSearch(msg);     break;
@@ -451,6 +469,9 @@ public class BrokerAgent extends Agent {
 
     /** Marks stale negotiating sessions as timed out and notifies affected buyers. */
     private void closeTimedOutSessions() {
+        if (negotiationPaused) {
+            return;
+        }
         long now = System.currentTimeMillis();
         for (NegotiationSession s : sessions.values()) {
             if (s.status != SessionStatus.NEGOTIATING) {
@@ -493,7 +514,57 @@ public class BrokerAgent extends Agent {
         totalRevenue = 0;
         noDealCount = 0;
         totalDealRounds = 0;
+        negotiationPaused = false;
+        pausedMessages.clear();
         log("RESET: Broker inventory, sessions, revenue, and metrics cleared.");
+    }
+
+    /** Returns true for active negotiation messages that should wait while paused. */
+    private boolean isPausableMessage(String ontology) {
+        return "BUYER_SHORTLIST".equals(ontology)
+                || "DEALER_COUNTER".equals(ontology)
+                || "DEALER_ACCEPT".equals(ontology)
+                || "DEALER_REJECT".equals(ontology)
+                || "DEALER_SOLD_OUT".equals(ontology)
+                || "BUYER_COUNTER".equals(ontology)
+                || "BUYER_WALKAWAY".equals(ontology);
+    }
+
+    /** Replays held negotiation messages when the simulation resumes. */
+    private void resumePausedWork() {
+        while (!pausedMessages.isEmpty() && !negotiationPaused) {
+            handleHeldMessage(pausedMessages.remove(0));
+        }
+    }
+
+    /** Dispatches a broker message that arrived while paused. */
+    private void handleHeldMessage(ACLMessage msg) {
+        String ont = msg.getOntology() == null ? "" : msg.getOntology();
+        switch (ont) {
+            case "BUYER_SHORTLIST":
+                handleBuyerShortlist(msg);
+                break;
+            case "DEALER_COUNTER":
+                handleDealerCounter(msg);
+                break;
+            case "DEALER_ACCEPT":
+                handleDealerAccept(msg);
+                break;
+            case "DEALER_REJECT":
+                handleDealerReject(msg);
+                break;
+            case "DEALER_SOLD_OUT":
+                handleDealerSoldOut(msg);
+                break;
+            case "BUYER_COUNTER":
+                handleBuyerCounter(msg);
+                break;
+            case "BUYER_WALKAWAY":
+                handleBuyerWalkaway(msg);
+                break;
+            default:
+                break;
+        }
     }
 
     /** Writes a broker-prefixed message to the UI logger. */
