@@ -826,12 +826,12 @@ public class MainUI extends Application {
         workspacePane = new StackPane();
         workspacePane.setStyle("-fx-background-color: transparent;");
         workspacePane.getChildren().addAll(
-                createWorkspaceView("Dashboard:", createBrokerView()),
-                createWorkspaceView("Participants Portal:", createParticipantsView(logger)),
-                createWorkspaceView("Manual Mode:", createManualPlayView()),
-                createWorkspaceView("Sessions:", createSessionsView()),
-                createWorkspaceView("Negotiation Settings:", createMarketAnalysisView()),
-                createWorkspaceView("Logs:", createLogsView()));
+                createWorkspaceView("Dashboard", createBrokerView()),
+                createWorkspaceView("Participants", createParticipantsView(logger)),
+                createWorkspaceView("Manual Negotiation", createManualPlayView()),
+                createWorkspaceView("Sessions", createSessionsView()),
+                createWorkspaceView("Settings", createMarketAnalysisView()),
+                createWorkspaceView("Logs", createLogsView()));
 
         VBox sidebar = createSidebar();
         HBox shell = new HBox(0, sidebar, workspacePane);
@@ -896,36 +896,35 @@ public class MainUI extends Application {
 
         VBox nav = new VBox(8);
         nav.getChildren().addAll(
-                createNavigationButton("Dashboard:", "Overview, KPIs, Graph"),
-                createNavigationButton("Participants Portal:", "Buyers and Dealers"),
-                createNavigationButton("Manual Mode:", "Buyers and Dealers"),
-                createNavigationButton("Sessions:", "History and Details"),
-                createNavigationButton("Negotiation Settings:", "Strategy Controls"),
-                createNavigationButton("Logs:", "Activity and Failures"));
+                createNavigationButton("Dashboard", "Dashboard:", "Overview, KPIs, Graph"),
+                createNavigationButton("Participants", "Participants Portal:", "Buyers and Dealers"),
+                createNavigationButton("Manual Negotiation", "Manual Mode:", "Buyers and Dealers"),
+                createNavigationButton("Sessions", "Sessions:", "History and Details"),
+                createNavigationButton("Settings", "Negotiation Settings:", "Strategy Controls"),
+                createNavigationButton("Logs", "Logs:", "Activity and Failures"));
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
-        Label footer = new Label("Poppins UI");
-        footer.setStyle("-fx-font-size: 11; -fx-text-fill: #bfdbfe; -fx-line-spacing: 2;");
-
-        VBox sidebar = new VBox(8, brandBox, nav, spacer, footer);
+        VBox sidebar = new VBox(8, brandBox, nav, spacer);
         sidebar.setPadding(new Insets(18, 14, 18, 14));
-        sidebar.setPrefWidth(230);
-        sidebar.setMinWidth(220);
+        double sidebarWidth = 230;
+        sidebar.setMinWidth(sidebarWidth);
+        sidebar.setPrefWidth(sidebarWidth);
+        sidebar.setMaxWidth(sidebarWidth);
         sidebar.setStyle("-fx-background-color: linear-gradient(to bottom, #1e3a8a, #312e81);"
                 + "-fx-border-color: #c7d2fe; -fx-border-width: 0 1 0 0;");
         return sidebar;
     }
 
-    /** Creates the navigation button UI component. */
-    private Button createNavigationButton(String title, String subtitle) {
+    /** Creates a navigation button for a workspace key and display label. */
+    private Button createNavigationButton(String key, String title, String subtitle) {
         Button btn = new Button(title + "\n" + subtitle);
         btn.setMaxWidth(Double.MAX_VALUE);
         btn.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         btn.setStyle(navButtonStyle(false));
-        btn.setOnAction(e -> showWorkspace(title));
-        navigationButtons.put(title, btn);
+        btn.setOnAction(e -> showWorkspace(key));
+        navigationButtons.put(key, btn);
         return btn;
     }
 
