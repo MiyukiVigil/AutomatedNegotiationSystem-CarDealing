@@ -47,6 +47,8 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
@@ -64,6 +66,7 @@ import javafx.stage.Stage;
 /** JavaFX dashboard and control console for the broker-routed car negotiation demo. */
 public class MainUI extends Application {
     private TextArea logArea = new TextArea();
+    private TextArea rawLogArea = new TextArea();
     private Label buyerCountLabel = new Label("0");
     private Label dealerCountLabel = new Label("0");
     private Label transactionCountLabel = new Label("0");
@@ -284,6 +287,9 @@ public class MainUI extends Application {
                     || msg.contains("STATUS:") || msg.contains("AGREED") || msg.contains("NEGOTIATION:");
 
             Platform.runLater(() -> {
+                rawLogArea.appendText(formattedMsg);
+                rawLogArea.setScrollTop(Double.MAX_VALUE);
+
                 if (msg.contains("[MANUAL_PROMPT]")) {
                     handleManualPromptLog(msg);
                     return;
@@ -295,10 +301,15 @@ public class MainUI extends Application {
                 if (isSetupMsg || isBuyerReg || isDealerReg || isCycleShift
                         || isSessionStart || isFeeCharged || isDealSettled
                         || isRevenue || isNoDeal || isPerformance || isNegotiationAction) {
-                    logArea.appendText(formattedMsg);
-                    if (dashboardEventsArea != null && (isSessionStart || isDealSettled || isNoDeal || isRelay
-                            || isPerformance || isFeeCharged)) {
-                        dashboardEventsArea.appendText(formattedMsg);
+                    TimelineLogEntry timelineEntry = formatTimelineLogEntry(msg);
+                    if (timelineEntry.visibleInTimeline) {
+                        logArea.appendText(timestamp + timelinePrefix(timelineEntry.category)
+                                + timelineEntry.message + "\n");
+                        logArea.setScrollTop(Double.MAX_VALUE);
+                    }
+                    if (dashboardEventsArea != null && timelineEntry.visibleOnDashboard) {
+                        dashboardEventsArea.appendText(timestamp + timelinePrefix(timelineEntry.category)
+                                + timelineEntry.message + "\n");
                         dashboardEventsArea.setScrollTop(Double.MAX_VALUE);
                     }
                 }
@@ -400,6 +411,314 @@ public class MainUI extends Application {
         stage.setTitle("Automated Car Negotiation System - Multi-Agent Platform");
         stage.setOnCloseRequest(e -> System.exit(0));
         stage.show();
+    }
+
+    /** Converts one raw agent/broker log message into the readable Timeline feed. */
+    private TimelineLogEntry formatTimelineLogEntry(String msg) {
+        if (msg == null || msg.isBlank()) {
+            return hiddenTimeline(LogCategory.DEBUG, "");
+        }
+
+        if (msg.contains("STATUS: Negotiation resumed.")) {
+            return isBrokerMessage(msg)
+                    ? visibleTimeline(LogCategory.SYSTEM, simulationStateSummary("resumed"), true)
+                    : hiddenTimeline(LogCategory.DEBUG, msg);
+        }
+        if (msg.contains("STATUS: Negotiation paused.")) {
+            return isBrokerMessage(msg)
+                    ? visibleTimeline(LogCategory.SYSTEM, simulationStateSummary("paused"), true)
+                    : hiddenTimeline(LogCategory.DEBUG, msg);
+        }
+        if (msg.contains("Cycle Shift:")) {
+            return visibleTimeline(LogCategory.CYCLE, "Cycle " + valueAfterLastSpace(msg), false);
+        }
+        if (msg.contains("Price updated") || msg.contains("Willing to pay")) {
+            return hiddenTimeline(LogCategory.DEBUG, msg);
+        }
+
+        if (msg.contains("[BROKER] SESSION START:")) {
+            return visibleTimeline(LogCategory.SESSION, formatSessionStartTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] INVITE:")) {
+            return visibleTimeline(LogCategory.SESSION, formatBrokerInviteTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] RELAY COUNTER:")) {
+            return visibleTimeline(LogCategory.COUNTER, formatBrokerCounterTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] RELAY OFFER:")) {
+            return visibleTimeline(LogCategory.OFFER, formatBrokerOfferTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] DEAL SETTLED:")) {
+            return visibleTimeline(LogCategory.DEAL, formatDealSettledTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] NO DEAL:")) {
+            return visibleTimeline(LogCategory.FAILURE, formatNoDealTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] FEE CHARGED:")) {
+            return visibleTimeline(LogCategory.REVENUE, formatFeeTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] REVENUE:")) {
+            return visibleTimeline(LogCategory.REVENUE, formatRevenueTimeline(msg), true);
+        }
+        if (msg.contains("[BROKER] PERFORMANCE:")) {
+            return hiddenTimeline(LogCategory.DEBUG, msg);
+        }
+        if (msg.contains("[BROKER] SEARCH:")) {
+            return visibleTimeline(LogCategory.SEARCH, stripBrokerPrefix(msg), false);
+        }
+        if (msg.contains("[BROKER] LISTING:")) {
+            return visibleTimeline(LogCategory.SEARCH, formatListingTimeline(msg), false);
+        }
+        if (msg.contains("[BROKER] === BROKER ONLINE ===")) {
+            return visibleTimeline(LogCategory.SYSTEM, "Broker online and ready to route negotiations.", true);
+        }
+        if (msg.contains("[BROKER] Fixed Negotiation Fee:")) {
+            return visibleTimeline(LogCategory.SYSTEM, stripBrokerPrefix(msg), true);
+        }
+        if (msg.contains("Initializing Space Control")) {
+            return visibleTimeline(LogCategory.SYSTEM, "Space Control online and ready to advance cycles.", true);
+        }
+
+        if (msg.contains("NEGOTIATION: Starting with")) {
+            return visibleTimeline(LogCategory.SESSION, formatBuyerNegotiationStartTimeline(msg), false);
+        }
+        if (msg.contains("STATUS: Shortlist received")) {
+            return visibleTimeline(LogCategory.SEARCH, agentName(msg) + " received dealer shortlist and is choosing.", false);
+        }
+        if (msg.contains("STATUS: All dealers' reserve prices exceed budget")) {
+            return visibleTimeline(LogCategory.FAILURE, agentName(msg) + " cannot afford any matching dealer reserve.", false);
+        }
+        if (msg.contains("AGREED:")) {
+            return visibleTimeline(LogCategory.OFFER, agentName(msg) + " accepted the counter and sent a final offer.", false);
+        }
+        if (msg.contains("STATUS: Negotiation dragging. Accelerated offer")) {
+            return visibleTimeline(LogCategory.OFFER, formatAccelerationTimeline(msg), false);
+        }
+        if (msg.contains("SUCCESS!")) {
+            return hiddenTimeline(LogCategory.DEBUG, msg);
+        }
+        if (msg.contains("DEAL CLOSED:")) {
+            return hiddenTimeline(LogCategory.DEBUG, msg);
+        }
+        if (msg.contains("Buyer '") && msg.contains("added")) {
+            return visibleTimeline(LogCategory.SYSTEM, msg, false);
+        }
+        if (msg.contains("Dealer '") && msg.contains("listed")) {
+            return visibleTimeline(LogCategory.SYSTEM, msg, false);
+        }
+        if (msg.contains("Demo scenario")) {
+            return visibleTimeline(LogCategory.SYSTEM, msg, true);
+        }
+
+        boolean visibleStatus = msg.contains("STATUS:") || msg.contains("RESET:") || msg.contains("Sniffer");
+        return new TimelineLogEntry(visibleStatus ? LogCategory.SYSTEM : LogCategory.DEBUG, msg, visibleStatus, false);
+    }
+
+    /** Creates a visible timeline entry. */
+    private TimelineLogEntry visibleTimeline(LogCategory category, String message, boolean dashboard) {
+        return new TimelineLogEntry(category, message, true, dashboard);
+    }
+
+    /** Creates a raw-only timeline entry. */
+    private TimelineLogEntry hiddenTimeline(LogCategory category, String message) {
+        return new TimelineLogEntry(category, message, false, false);
+    }
+
+    /** Returns a consistent prefix for readable timeline categories. */
+    private String timelinePrefix(LogCategory category) {
+        return "[" + categoryLabel(category) + "] ";
+    }
+
+    /** Converts a category enum into a compact label. */
+    private String categoryLabel(LogCategory category) {
+        switch (category) {
+            case SYSTEM:
+                return "System";
+            case SEARCH:
+                return "Search";
+            case SESSION:
+                return "Session";
+            case OFFER:
+                return "Offer";
+            case COUNTER:
+                return "Counter";
+            case DEAL:
+                return "Deal";
+            case FAILURE:
+                return "No Deal";
+            case REVENUE:
+                return "Revenue";
+            case CYCLE:
+                return "Cycle";
+            default:
+                return "Debug";
+        }
+    }
+
+    /** Returns true when the raw message came from the broker. */
+    private boolean isBrokerMessage(String msg) {
+        return msg.contains("[BROKER]");
+    }
+
+    /** Builds one collapsed pause/resume summary from current UI registration state. */
+    private String simulationStateSummary(String state) {
+        return "Simulation " + state + ": broker, " + buyerAgents.size() + " buyers, "
+                + dealerAgents.size() + " dealers.";
+    }
+
+    /** Formats a broker session-start line for humans. */
+    private String formatSessionStartTimeline(String msg) {
+        String payload = substringAfter(msg, "SESSION START:");
+        String sessionId = extractSessionId(payload);
+        String buyer = extractBrokerField(payload, "Buyer");
+        String dealer = extractBrokerField(payload, "Dealer");
+        String car = extractBrokerField(payload, "Car");
+        String firstOffer = extractBrokerField(payload, "FirstOffer");
+        String buyerReserve = extractBrokerField(payload, "BuyerReserve");
+        String dealerReserve = extractBrokerField(payload, "DealerReserve");
+        return "Session opened: " + valueOrNA(buyer) + " -> " + valueOrNA(dealer)
+                + " for " + valueOrNA(car) + ", first offer " + valueOrNA(firstOffer)
+                + " [" + valueOrNA(sessionId) + "]"
+                + " | buyer budget " + valueOrNA(buyerReserve)
+                + (dealerReserve != null ? " | dealer reserve " + dealerReserve : "");
+    }
+
+    /** Formats the broker's dealer invitation line. */
+    private String formatBrokerInviteTimeline(String msg) {
+        String dealer = valueAfter(msg, "offer to ");
+        if (dealer.contains("|")) {
+            dealer = dealer.substring(0, dealer.indexOf('|')).trim();
+        }
+        Integer price = extractLastMoneyValue(msg);
+        return "Broker invited " + valueOrNA(dealer) + " with the first offer"
+                + (price != null ? " " + money(price) : "") + ".";
+    }
+
+    /** Formats a dealer-to-buyer counter routed through the broker. */
+    private String formatBrokerCounterTimeline(String msg) {
+        String payload = substringAfter(msg, "RELAY COUNTER:");
+        String sessionId = extractSessionId(payload);
+        String dealer = extractBrokerField(payload, "Dealer");
+        String buyer = extractBrokerField(payload, "Buyer");
+        Integer price = extractLastMoneyValue(payload);
+        String round = extractRound(payload);
+        return "Round " + valueOrNA(round) + " counter: " + valueOrNA(dealer) + " -> "
+                + valueOrNA(buyer) + ", " + money(price) + " [" + valueOrNA(sessionId) + "]";
+    }
+
+    /** Formats a buyer-to-dealer offer routed through the broker. */
+    private String formatBrokerOfferTimeline(String msg) {
+        String payload = substringAfter(msg, "RELAY OFFER:");
+        String sessionId = extractSessionId(payload);
+        String buyer = extractBrokerField(payload, "Buyer");
+        String dealer = extractBrokerField(payload, "Dealer");
+        Integer price = extractLastMoneyValue(payload);
+        return "Buyer offer routed: " + valueOrNA(buyer) + " -> " + valueOrNA(dealer)
+                + ", " + money(price) + " [" + valueOrNA(sessionId) + "]";
+    }
+
+    /** Formats a broker settlement line. */
+    private String formatDealSettledTimeline(String msg) {
+        String payload = substringAfter(msg, "DEAL SETTLED:");
+        String sessionId = extractSessionId(payload);
+        String buyer = extractBrokerField(payload, "Buyer");
+        String dealer = extractBrokerField(payload, "Dealer");
+        String car = extractBrokerField(payload, "Car");
+        String price = extractBrokerField(payload, "Price");
+        String commission = extractBrokerField(payload, "Commission");
+        return "Deal settled: " + valueOrNA(buyer) + " bought " + valueOrNA(car)
+                + " from " + valueOrNA(dealer) + " for " + valueOrNA(price)
+                + " [" + valueOrNA(sessionId) + "]"
+                + (commission != null ? " | commission " + commission : "");
+    }
+
+    /** Formats a broker failure/no-deal line. */
+    private String formatNoDealTimeline(String msg) {
+        String payload = substringAfter(msg, "NO DEAL:");
+        String sessionId = extractSessionId(payload);
+        String reason = extractBrokerField(payload, "Reason");
+        String buyer = extractBrokerField(payload, "Buyer");
+        String dealer = extractBrokerField(payload, "Dealer");
+        String car = extractBrokerField(payload, "Car");
+        String parties = valueOrNA(buyer) + (dealer != null ? " with " + dealer : "");
+        return "No deal: " + parties + " for " + valueOrNA(car) + " [" + valueOrNA(sessionId)
+                + "] | reason " + humanFailureReason(reason);
+    }
+
+    /** Formats a fixed session-fee line. */
+    private String formatFeeTimeline(String msg) {
+        Integer fee = extractFirstMoneyValue(msg);
+        Integer running = extractLastMoneyValue(msg);
+        return "Session fee charged: " + money(fee)
+                + (running != null ? " | running broker revenue " + money(running) : "");
+    }
+
+    /** Formats a broker commission/revenue line. */
+    private String formatRevenueTimeline(String msg) {
+        Integer commission = extractFirstMoneyValue(substringAfter(msg, "REVENUE:"));
+        Integer total = extractLastMoneyValue(msg);
+        return "Commission earned: " + money(commission)
+                + (total != null ? " | total broker revenue " + money(total) : "");
+    }
+
+    /** Formats a broker inventory listing line. */
+    private String formatListingTimeline(String msg) {
+        String listing = stripBrokerPrefix(msg).replace("LISTING:", "").trim();
+        return "Dealer listing registered: " + listing;
+    }
+
+    /** Formats a buyer's first selected dealer line. */
+    private String formatBuyerNegotiationStartTimeline(String msg) {
+        String agent = agentName(msg);
+        String body = substringAfter(msg, "NEGOTIATION:");
+        return agent + " selected dealer - " + body.replace("Starting with ", "");
+    }
+
+    /** Formats a buyer acceleration line. */
+    private String formatAccelerationTimeline(String msg) {
+        Integer price = extractLastMoneyValue(msg);
+        return agentName(msg) + " raised their offer to " + money(price) + " to keep negotiation moving.";
+    }
+
+    /** Removes the broker source prefix from one message. */
+    private String stripBrokerPrefix(String msg) {
+        return msg.replace("[BROKER]", "").trim();
+    }
+
+    /** Extracts the local agent name before the first colon. */
+    private String agentName(String msg) {
+        int colon = msg.indexOf(':');
+        return colon > 0 ? msg.substring(0, colon).trim() : "Agent";
+    }
+
+    /** Returns the text after a marker, or the whole message when absent. */
+    private String substringAfter(String msg, String marker) {
+        int idx = msg.indexOf(marker);
+        return idx >= 0 ? msg.substring(idx + marker.length()).trim() : msg.trim();
+    }
+
+    /** Returns text after a marker for simple prose messages. */
+    private String valueAfter(String msg, String marker) {
+        int idx = msg.indexOf(marker);
+        return idx >= 0 ? msg.substring(idx + marker.length()).trim() : "";
+    }
+
+    /** Returns the final whitespace-delimited token from a message. */
+    private String valueAfterLastSpace(String msg) {
+        int idx = msg.lastIndexOf(' ');
+        return idx >= 0 ? msg.substring(idx + 1).trim() : msg.trim();
+    }
+
+    /** Extracts the displayed round number from broker relay text. */
+    private String extractRound(String payload) {
+        Matcher matcher = Pattern.compile("\\(Round\\s+(\\d+)\\)").matcher(payload);
+        return matcher.find() ? matcher.group(1) : "?";
+    }
+
+    /** Extracts the first RM amount from text. */
+    private Integer extractFirstMoneyValue(String payload) {
+        Matcher matcher = RM_AMOUNT_PATTERN.matcher(payload);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : null;
     }
 
     /** Ingests one broker or agent log message into trajectory state. */
@@ -1017,6 +1336,37 @@ public class MainUI extends Application {
         }
     }
 
+    /** Human-facing category for one raw ACL/demo log message. */
+    private enum LogCategory {
+        SYSTEM,
+        SEARCH,
+        SESSION,
+        OFFER,
+        COUNTER,
+        DEAL,
+        FAILURE,
+        REVENUE,
+        CYCLE,
+        DEBUG
+    }
+
+    /** Presentation result for the readable timeline feed. */
+    private static class TimelineLogEntry {
+        private final LogCategory category;
+        private final String message;
+        private final boolean visibleInTimeline;
+        private final boolean visibleOnDashboard;
+
+        /** Stores one formatted timeline line and where it should be displayed. */
+        private TimelineLogEntry(LogCategory category, String message, boolean visibleInTimeline,
+                boolean visibleOnDashboard) {
+            this.category = category;
+            this.message = message;
+            this.visibleInTimeline = visibleInTimeline;
+            this.visibleOnDashboard = visibleOnDashboard;
+        }
+    }
+
     /** Updates the negotiation control status display state. */
     private void updateNegotiationControlStatus() {
         if (negotiationControlStatusLabel == null) {
@@ -1033,7 +1383,11 @@ public class MainUI extends Application {
     /** Writes a message to the UI logger when available. */
     private void loggerLog(String message) {
         String timestamp = "[" + LocalTime.now().format(timeFormatter) + "] ";
-        logArea.appendText(timestamp + "[UI] " + message + "\n");
+        String formatted = timestamp + "[UI] " + message + "\n";
+        logArea.appendText(timestamp + "[System] " + message + "\n");
+        rawLogArea.appendText(formatted);
+        logArea.setScrollTop(Double.MAX_VALUE);
+        rawLogArea.setScrollTop(Double.MAX_VALUE);
     }
 
     /** Removes a terminated agent from dashboard registration state. */
@@ -1288,6 +1642,7 @@ public class MainUI extends Application {
         updatePlaybackButtonState();
 
         logArea.clear();
+        rawLogArea.clear();
         if (dashboardEventsArea != null) dashboardEventsArea.clear();
         if (failuresArea != null) failuresArea.clear();
         if (sessionsArea != null) sessionsArea.clear();
@@ -3001,7 +3356,10 @@ public class MainUI extends Application {
             refreshNegotiationVisualiser();
         });
         clearSessionBtn.setOnAction(e -> clearSession());
-        sniffBtn.setOnAction(e -> launchSniffer(msg -> logArea.appendText(msg + "\n")));
+        sniffBtn.setOnAction(e -> launchSniffer(msg -> {
+            logArea.appendText("[System] " + msg + "\n");
+            rawLogArea.appendText(msg + "\n");
+        }));
 
         // Tick positions 0-6 map to speed multipliers.
         // Delay in ms: 4000, 2000, 1000, 500, 200, 100, 50
@@ -3420,45 +3778,60 @@ public class MainUI extends Application {
         box.setPadding(new Insets(4));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
-        Label headerLabel = new Label("System Activity Log");
+        Label headerLabel = new Label("System Timeline");
         headerLabel.setStyle("-fx-font-size: 22; -fx-font-weight: 800; -fx-text-fill: " + PRIMARY_BLUE + ";");
 
-        TextArea fullLogArea = new TextArea();
-        fullLogArea.setEditable(false);
-        fullLogArea.setWrapText(true);
-        fullLogArea.setStyle(textAreaStyle(true));
-        fullLogArea.setPrefRowCount(30);
+        logArea.setEditable(false);
+        logArea.setWrapText(true);
+        logArea.setStyle(textAreaStyle(true));
+        logArea.setPrefRowCount(30);
 
-        logArea.textProperty().addListener((obs, oldVal, newVal) -> {
-            fullLogArea.setText(newVal);
-            fullLogArea.setScrollTop(Double.MAX_VALUE);
-        });
+        rawLogArea.setEditable(false);
+        rawLogArea.setWrapText(true);
+        rawLogArea.setStyle(textAreaStyle(true));
+        rawLogArea.setPrefRowCount(30);
+
+        TabPane logTabs = new TabPane();
+        logTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        Tab timelineTab = new Tab("Timeline", logArea);
+        Tab rawTab = new Tab("Raw ACL Log", rawLogArea);
+        logTabs.getTabs().addAll(timelineTab, rawTab);
 
         HBox controlBox = new HBox(12);
         controlBox.setPadding(new Insets(15));
         controlBox.setStyle(SOFT_PANEL_STYLE);
 
-        Button copyBtn = createStyledButton("Copy Log", ACCENT_BLUE);
-        copyBtn.setPrefWidth(120);
-        copyBtn.setOnAction(e -> {
+        Button copyTimelineBtn = createStyledButton("Copy Timeline", ACCENT_BLUE);
+        copyTimelineBtn.setPrefWidth(150);
+        copyTimelineBtn.setOnAction(e -> {
             var clipboard = javafx.scene.input.Clipboard.getSystemClipboard();
             var content = new javafx.scene.input.ClipboardContent();
             content.putString(logArea.getText());
             clipboard.setContent(content);
-            showAlert("Log copied to clipboard!", Alert.AlertType.INFORMATION);
+            showAlert("Timeline copied to clipboard!", Alert.AlertType.INFORMATION);
+        });
+
+        Button copyRawBtn = createStyledButton("Copy Raw", ACCENT_BLUE);
+        copyRawBtn.setPrefWidth(120);
+        copyRawBtn.setOnAction(e -> {
+            var clipboard = javafx.scene.input.Clipboard.getSystemClipboard();
+            var content = new javafx.scene.input.ClipboardContent();
+            content.putString(rawLogArea.getText());
+            clipboard.setContent(content);
+            showAlert("Raw ACL log copied to clipboard!", Alert.AlertType.INFORMATION);
         });
 
         Button clearBtn = createStyledButton("Clear Log", ERROR_RED);
         clearBtn.setPrefWidth(120);
         clearBtn.setOnAction(e -> {
             logArea.clear();
-            fullLogArea.clear();
+            rawLogArea.clear();
         });
 
-        controlBox.getChildren().addAll(copyBtn, clearBtn);
+        controlBox.getChildren().addAll(copyTimelineBtn, copyRawBtn, clearBtn);
 
-        box.getChildren().addAll(headerLabel, fullLogArea, controlBox);
-        VBox.setVgrow(fullLogArea, Priority.ALWAYS);
+        box.getChildren().addAll(headerLabel, logTabs, controlBox);
+        VBox.setVgrow(logTabs, Priority.ALWAYS);
         return box;
     }
 
