@@ -315,7 +315,7 @@ public class BuyerAgent extends Agent {
 
         if (dealerAttemptIndex >= MAX_DEALER_NEGOTIATIONS || currentDealerIdx >= dealers.size()) {
             if (!dealFound) {
-                log("STATUS: Dealer negotiation limit reached. No deal reached.");
+                log("STATUS: Dealer negotiation limit reached. No deal reached. Terminating.");
                 if (dealerAttemptIndex == 0) {
                     sendNoDealReport("MAX_ROUNDS_REACHED");
                 }

@@ -1,4 +1,4 @@
-﻿package org.example;
+package org.example;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -1519,8 +1519,8 @@ public class MainUI extends Application {
         VBox titleBox = new VBox(2, title, hint);
 
         HBox tabs = new HBox(6,
-                createVisualiserTab("Market View", VisualiserView.MARKET),
                 createVisualiserTab("Session View", VisualiserView.SESSION),
+                createVisualiserTab("Market View", VisualiserView.MARKET),
                 createVisualiserTab("Agent View", VisualiserView.AGENT));
         tabs.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
 
@@ -1546,7 +1546,7 @@ public class MainUI extends Application {
         section.setStyle(PANEL_STYLE);
         VBox.setVgrow(section, Priority.ALWAYS);
 
-        showVisualiserView(VisualiserView.MARKET);
+        showVisualiserView(VisualiserView.SESSION);
         refreshNegotiationVisualiser();
         return section;
     }
