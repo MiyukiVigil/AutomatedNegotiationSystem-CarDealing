@@ -60,14 +60,14 @@ public final class AppConfig {
         NegotiationConfig.Strategy switchStrategy = getStrategy("strategy.switch", NegotiationConfig.Strategy.CONCEDER);
         return new NegotiationConfig(
                 strategy,
-                getInt("strategy.deadlineCycles", 50),
+                getInt("strategy.deadlineCycles", 20),
                 getDouble("strategy.buyerStartPercent", 0.70),
                 getDouble("strategy.dealerReservePercent", 0.70),
-                getInt("strategy.maxRoundsPerDealer", 3),
+                getInt("strategy.maxRoundsPerDealer", 10),
                 getInt("strategy.maxSearchRetries", 2),
-                getInt("strategy.stuckRoundsBeforeAcceleration", 2),
+                getInt("strategy.stuckRoundsBeforeAcceleration", 4),
                 getDouble("strategy.manualDealerTargetPercent", 1.0),
-                getInt("strategy.switchCycle", 15),
+                getInt("strategy.switchCycle", 3),
                 switchStrategy);
     }
 

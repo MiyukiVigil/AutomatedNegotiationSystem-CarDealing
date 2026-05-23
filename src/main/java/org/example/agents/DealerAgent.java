@@ -58,6 +58,8 @@ public class DealerAgent extends Agent {
         NegotiationTerms latestTerms;
         int rounds;
         String status;
+        // ★ ADDED: Per-session opponent model to track this buyer's offer trend
+        OpponentModel buyerModel;
 
         /** Creates a state record for a newly contacted buyer session. */
         DealerSessionState(String sessionId, String buyerName, String carModel, NegotiationTerms latestTerms) {
@@ -66,6 +68,7 @@ public class DealerAgent extends Agent {
             this.carModel = carModel;
             this.latestTerms = latestTerms;
             this.status = "NEGOTIATING";
+            this.buyerModel = new OpponentModel("buyer[" + buyerName + "]"); // ★ ADDED
         }
     }
 
@@ -214,6 +217,10 @@ public class DealerAgent extends Agent {
         log("OFFER #" + negotiationCount + ": [" + sessionId + "] Buyer offered RM" + buyerOffer
                 + termsText(buyerTerms) + " (target=RM" + currentTargetPrice + ")");
 
+        // ★ ADDED: Record buyer offer into opponent model and log prediction
+        state.buyerModel.recordOffer(buyerOffer);
+        log("PREDICT: " + state.buyerModel.summary(currentTargetPrice));
+
         if (state.rounds == 1 && isClearlyUnworkableFirstOffer(buyerTerms)) {
             state.status = "REJECTED";
             activeSessions.remove(sessionId);
@@ -279,12 +286,25 @@ public class DealerAgent extends Agent {
         } else {
             state.status = "COUNTERED";
             NegotiationTerms counterTerms = dealerCounterTerms();
+
+            // ★ ADDED: Use opponent model — if buyer predicted to reach our target, hold firm
+            int predictedBuyerNext = state.buyerModel.predictNextOffer();
+            boolean buyerComingToUs = predictedBuyerNext > 0
+                    && predictedBuyerNext >= currentTargetPrice
+                    && state.buyerModel.size() >= 2;
+            if (buyerComingToUs) {
+                log("PREDICT: Buyer predicted to offer RM" + predictedBuyerNext
+                        + " next round — holding firm at RM" + currentTargetPrice);
+                // Hold current target, don't concede further
+                counterTerms = dealerCounterTerms();
+            }
+
             // Counter-offer
             ACLMessage counter = new ACLMessage(ACLMessage.REJECT_PROPOSAL);
             counter.addReceiver(new AID("broker", AID.ISLOCALNAME));
             counter.setOntology("DEALER_COUNTER");
             counter.setContent(sessionId + ";" + counterTerms.toPayload());
-            
+
             addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 600) {
                 /** Sends the counter-offer after a short UI-friendly delay. */
                 @Override

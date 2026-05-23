@@ -40,7 +40,8 @@ public class BuyerAgent extends Agent {
     private boolean negotiationStarted = true;  // false = wait for manual start signal
     private boolean isManualStrategy = false;
     private static final int MAX_DEALER_NEGOTIATIONS = 3;
-    private static final int NARROW_PRICE_WINDOW = 10_000;
+    // ★ FIXED: Removed hardcoded NARROW_PRICE_WINDOW = 10_000.
+    // Window is now computed relative to maxBudget (30%) inside each method.
 
     // ── Negotiation state ─────────────────────────────────────────────────────
     private final List<DealerOption> dealers = new ArrayList<>();
@@ -62,6 +63,9 @@ public class BuyerAgent extends Agent {
     private boolean negotiationPaused = false;
     private final List<ACLMessage> pausedMessages = new ArrayList<>();
     private final List<Runnable> pausedActions = new ArrayList<>();
+
+    // ★ ADDED: Opponent model — tracks dealer offers and predicts their next move
+    private OpponentModel dealerModel = new OpponentModel("dealer");
 
     // ── Inner types ───────────────────────────────────────────────────────────
     /** Shortlisted dealer candidate returned by the broker. */
@@ -153,17 +157,14 @@ public class BuyerAgent extends Agent {
                         break;
 
                     case "BROKER_RELAY_COUNTER":
-                        // Broker relays dealer's counter-offer to us
                         if (negotiationStarted) handleBrokerRelayCounter(msg);
                         break;
 
                     case "BROKER_RELAY_ACCEPT":
-                        // Broker confirms deal
                         if (negotiationStarted) handleBrokerRelayAccept(msg);
                         break;
 
                     case "BROKER_RELAY_SOLD_OUT":
-                        // Broker tells us the dealer ran out of stock — move to next dealer
                         if (negotiationStarted) handleBrokerRelaySoldOut(msg);
                         break;
 
@@ -189,7 +190,6 @@ public class BuyerAgent extends Agent {
         negotiationStarted = true;
         log("STATUS: Negotiation started for " + desiredCar + ".");
 
-        // Register with SpaceControl
         ACLMessage reg = new ACLMessage(ACLMessage.INFORM);
         reg.setOntology("REGISTER");
         reg.addReceiver(new AID("space", AID.ISLOCALNAME));
@@ -198,9 +198,8 @@ public class BuyerAgent extends Agent {
         searchBroker();
     }
 
-    /** Send BUYER_SEARCH to broker. Uses a placeholder sessionId for the search phase. */
+    /** Send BUYER_SEARCH to broker. */
     public void searchBroker() {
-        // Session ID for the search itself (not a negotiation session yet)
         String searchId = getLocalName() + "-" + desiredCar + "-search";
         ACLMessage req = new ACLMessage(ACLMessage.REQUEST);
         req.addReceiver(new AID("broker", AID.ISLOCALNAME));
@@ -233,7 +232,6 @@ public class BuyerAgent extends Agent {
      * Parse shortlist, verify affordability, send BUYER_SHORTLIST to broker.
      */
     private void handleBrokerShortlist(ACLMessage msg) {
-        // Content: "{searchId};{dealerCsv}"  where dealerCsv may be "NONE"
         String content = msg.getContent();
         int    sep     = content.indexOf(';');
         String dealerCsv = sep >= 0 ? content.substring(sep + 1) : content;
@@ -269,7 +267,6 @@ public class BuyerAgent extends Agent {
             dealers.remove(dealers.size() - 1);
         }
 
-        // Check at least one dealer is affordable
         boolean anyAffordable = dealers.stream().anyMatch(d -> d.reservePrice <= maxBudget);
         if (!anyAffordable) {
             log("STATUS: All dealers' reserve prices exceed budget RM" + maxBudget + ". Ending.");
@@ -282,7 +279,7 @@ public class BuyerAgent extends Agent {
         searchRetries = 0;
         currentDealerIdx = 0;
         dealerAttemptIndex = 0;
-        
+
         if (isManualStrategy) {
             log("STATUS: Manual Shortlist Phase. Waiting for user input...");
             StringBuilder sb = new StringBuilder();
@@ -301,11 +298,10 @@ public class BuyerAgent extends Agent {
     }
 
     /**
-     * Pick the current dealer (skip if unaffordable), generate a new sessionId,
+     * Pick the current dealer, generate a new sessionId,
      * and send BUYER_SHORTLIST to broker.
      */
     private void submitShortlistToBroker() {
-        // Skip dealers whose reserve price exceeds budget
         while (currentDealerIdx < dealers.size()
                 && dealers.get(currentDealerIdx).reservePrice > maxBudget) {
             log("STATUS: Skipping " + dealers.get(currentDealerIdx).name
@@ -329,16 +325,17 @@ public class BuyerAgent extends Agent {
         negotiationRound = 0;
         activeDealerListedPrice = dealer.listedPrice;
         activeSessionId  = getLocalName() + "-" + desiredCar + "-" + dealerAttemptIndex;
+        // ★ ADDED: Reset opponent model for each new dealer
+        dealerModel = new OpponentModel("dealer");
 
         NegotiationTerms firstTerms = buyerTermsForPrice(currentWillingOffer);
 
-        // Content: "sessionId;dealerName;terms;buyerReserve;carModel"
         ACLMessage shortlist = new ACLMessage(ACLMessage.PROPOSE);
         shortlist.addReceiver(new AID("broker", AID.ISLOCALNAME));
         shortlist.setOntology("BUYER_SHORTLIST");
         shortlist.setContent(activeSessionId + ";" + dealer.name + ";"
                 + firstTerms.toPayload() + ";" + maxBudget + ";" + desiredCar);
-        
+
         addBehaviour(new WakerBehaviour(this, 400) {
             /** Sends the shortlist after a short delay for readable demo pacing. */
             @Override
@@ -358,7 +355,6 @@ public class BuyerAgent extends Agent {
     private void handleBrokerRelayCounter(ACLMessage msg) {
         String[] p   = msg.getContent().split(";");
         String sid   = p[0];
-        // p[1] = dealerName
         NegotiationTerms counterTerms = NegotiationTerms.fromPayload(p[2]);
         int counter  = counterTerms.getPrice();
         negotiationRound++;
@@ -366,30 +362,42 @@ public class BuyerAgent extends Agent {
         log("OFFER: [" + sid + "] Dealer counter-offered RM" + counter
                 + termsText(counterTerms) + " (Round " + negotiationRound + ")");
 
+        // ★ ADDED: Record dealer offer into opponent model and log prediction
+        dealerModel.recordOffer(counter);
+        log("PREDICT: " + dealerModel.summary(currentWillingOffer));
+
         if (isManualStrategy) {
             log("[MANUAL_PROMPT] COUNTER:" + p[1] + ":" + counter);
             return;
         }
 
         if (shouldAcceptCounter(counterTerms)) {
-            // Deal! Send agreeing counter back via broker (broker will forward to dealer)
             sendBuyerCounter(sid, counterTerms);
             log("AGREED: Counter RM" + counter + " is within budget. Sending final offer.");
-            // Note: the actual deal confirmation comes from DEALER_ACCEPT → BROKER_RELAY_ACCEPT
         } else if (negotiationRound < config.getMaxRoundsPerDealer()) {
             moveOfferForNegotiationRound();
-            // Acceleration if stuck
-            if (negotiationRound >= config.getStuckRoundsBeforeAcceleration()) {
-                currentWillingOffer = Math.min(maxBudget,
-                        currentWillingOffer + Math.max(1, (maxBudget - currentWillingOffer) / 2));
-                currentTerms = buyerTermsForPrice(currentWillingOffer);
-                log("STATUS: Negotiation dragging. Accelerated offer to RM" + currentWillingOffer);
+            // ★ ADDED: Use opponent model — if dealer predicted to reach our price, hold firm
+            int predictedDealerNext = dealerModel.predictNextOffer();
+            boolean dealerComingToUs = predictedDealerNext > 0
+                    && predictedDealerNext <= currentWillingOffer
+                    && dealerModel.size() >= 2;
+            if (dealerComingToUs) {
+                log("PREDICT: Dealer predicted to offer RM" + predictedDealerNext
+                        + " next round — holding firm at RM" + currentWillingOffer);
+                sendBuyerCounter(sid, buyerTermsForPrice(currentWillingOffer));
+                log("COUNTER: Holding firm at RM" + currentWillingOffer + termsText(currentTerms));
+            } else {
+                if (negotiationRound >= config.getStuckRoundsBeforeAcceleration()) {
+                    currentWillingOffer = Math.min(maxBudget,
+                            currentWillingOffer + Math.max(1, (maxBudget - currentWillingOffer) / 2));
+                    currentTerms = buyerTermsForPrice(currentWillingOffer);
+                    log("STATUS: Negotiation dragging. Accelerated offer to RM" + currentWillingOffer);
+                }
+                sendBuyerCounter(sid, buyerTermsForPrice(currentWillingOffer));
+                log("COUNTER: Sent RM" + currentWillingOffer + termsText(currentTerms) + " to broker.");
             }
-            sendBuyerCounter(sid, buyerTermsForPrice(currentWillingOffer));
-            log("COUNTER: Sent RM" + currentWillingOffer + termsText(currentTerms) + " to broker.");
             triggerMarketAction();
         } else {
-            // Walk away from this dealer, try next
             log("STATUS: Max rounds reached on " + sid + ". Moving to next dealer...");
             sendWalkaway(sid, "MAX_ROUNDS_REACHED");
             currentDealerIdx++;
@@ -404,7 +412,6 @@ public class BuyerAgent extends Agent {
      */
     private void handleBrokerRelayAccept(ACLMessage msg) {
         String[] p   = msg.getContent().split(";");
-        // p[0]=sessionId, p[1]=dealerName
         NegotiationTerms agreedTerms = NegotiationTerms.fromPayload(p[2]);
         int agreedPrice = agreedTerms.getPrice();
         log("SUCCESS! Purchased " + desiredCar + " for RM" + agreedPrice
@@ -417,7 +424,6 @@ public class BuyerAgent extends Agent {
     /**
      * BROKER_RELAY_SOLD_OUT: "sessionId;dealerName"
      * The dealer went out of stock mid-negotiation.
-     * Advance to the next dealer in the shortlist immediately.
      */
     private void handleBrokerRelaySoldOut(ACLMessage msg) {
         String[] p      = msg.getContent().split(";", 2);
@@ -447,13 +453,13 @@ public class BuyerAgent extends Agent {
         submitShortlistToBroker();
     }
 
-    /** Send BUYER_COUNTER (PROPOSE / BUYER_COUNTER) to broker */
+    /** Send BUYER_COUNTER to broker. */
     private void sendBuyerCounter(String sessionId, NegotiationTerms terms) {
         ACLMessage counter = new ACLMessage(ACLMessage.PROPOSE);
         counter.addReceiver(new AID("broker", AID.ISLOCALNAME));
         counter.setOntology("BUYER_COUNTER");
         counter.setContent(sessionId + ";" + terms.toPayload());
-        
+
         addBehaviour(new WakerBehaviour(this, 600) {
             /** Sends the buyer counter after a short delay for readable demo pacing. */
             @Override
@@ -519,7 +525,7 @@ public class BuyerAgent extends Agent {
         }
     }
 
-    /** Send BUYER_WALKAWAY (FAILURE / BUYER_WALKAWAY) to broker */
+    /** Send BUYER_WALKAWAY to broker. */
     private void sendWalkaway(String sessionId, String reason) {
         if (sessionId == null) {
             sendNoDealReport(reason);
@@ -554,10 +560,10 @@ public class BuyerAgent extends Agent {
     private void handleManualAction(ACLMessage msg) {
         String content = msg.getContent();
         if (content == null || content.isEmpty()) return;
-        
+
         String[] parts = content.split(";");
         String action = parts[0];
-        
+
         if ("SHORTLIST".equals(action) && parts.length >= 3) {
             String dealerName = parts[1];
             int firstOffer = Integer.parseInt(parts[2]);
@@ -565,7 +571,6 @@ public class BuyerAgent extends Agent {
                 log("MANUAL: Select a dealer and enter a positive first offer.");
                 return;
             }
-            
             activeSessionId = getLocalName() + "-" + desiredCar + "-" + dealerAttemptIndex;
             ACLMessage prop = new ACLMessage(ACLMessage.PROPOSE);
             prop.addReceiver(new AID("broker", AID.ISLOCALNAME));
@@ -573,9 +578,8 @@ public class BuyerAgent extends Agent {
             prop.setContent(activeSessionId + ";" + dealerName + ";" + buyerTermsForPrice(firstOffer).toPayload()
                     + ";" + maxBudget + ";" + desiredCar);
             send(prop);
-            
             log("MANUAL: Sent first offer RM" + firstOffer + " to " + dealerName);
-            
+
         } else if ("COUNTER".equals(action) && parts.length >= 2) {
             int price = Integer.parseInt(parts[1]);
             if (activeSessionId == null || price <= 0) {
@@ -588,7 +592,7 @@ public class BuyerAgent extends Agent {
             counterMsg.setContent(activeSessionId + ";" + buyerTermsForPrice(price).toPayload());
             send(counterMsg);
             log("MANUAL: Sent counter offer RM" + price);
-            
+
         } else if ("ACCEPT".equals(action) && parts.length >= 2) {
             int price = Integer.parseInt(parts[1]);
             if (activeSessionId == null || price <= 0) {
@@ -601,7 +605,7 @@ public class BuyerAgent extends Agent {
             counterMsg.setContent(activeSessionId + ";" + buyerTermsForPrice(price).toPayload());
             send(counterMsg);
             log("MANUAL: Sent acceptance price RM" + price);
-            
+
         } else if ("WALKAWAY".equals(action)) {
             sendWalkaway(activeSessionId, "MANUAL_WALKAWAY");
             log("MANUAL: Walked away from negotiation.");
@@ -664,14 +668,19 @@ public class BuyerAgent extends Agent {
         currentTerms = buyerTermsForPrice(currentWillingOffer);
     }
 
-    /** Extends the concession deadline when the affordability window is narrow. */
+    /**
+     * Extends the concession deadline when the affordability window is narrow.
+     * Window threshold is relative (30% of maxBudget) instead of hardcoded RM10,000
+     * so high-budget agents get the same proportional breathing room as low-budget agents.
+     */
     private int effectiveBuyerDeadlineCycles() {
         int deadline = config.getDeadlineCycles();
         int affordabilityWindow = activeDealerListedPrice > 0
                 ? maxBudget - activeDealerListedPrice
                 : maxBudget - initialOffer;
-        if (affordabilityWindow >= 0 && affordabilityWindow <= NARROW_PRICE_WINDOW) {
-            return Math.max(deadline, deadline * 2);
+        int narrowWindow = (int)(maxBudget * 0.30);
+        if (affordabilityWindow >= 0 && affordabilityWindow <= narrowWindow) {
+            return Math.max(deadline, deadline * 3);
         }
         return deadline;
     }
@@ -704,12 +713,16 @@ public class BuyerAgent extends Agent {
         return negotiationRound >= config.getMaxRoundsPerDealer();
     }
 
-    /** Returns true when the listed/counter price is close to the buyer budget. */
+    /**
+     * Returns true when the listed/counter price is close to the buyer budget.
+     * Uses relative 30% of maxBudget threshold instead of hardcoded RM10,000.
+     */
     private boolean isNarrowPriceWindow(int counterPrice) {
         int affordabilityWindow = activeDealerListedPrice > 0
                 ? maxBudget - activeDealerListedPrice
                 : maxBudget - counterPrice;
-        return affordabilityWindow >= 0 && affordabilityWindow <= NARROW_PRICE_WINDOW;
+        int narrowWindow = (int)(maxBudget * 0.30);
+        return affordabilityWindow >= 0 && affordabilityWindow <= narrowWindow;
     }
 
     /** Returns true when terms meet the buyer's weighted utility threshold. */
