@@ -1814,7 +1814,7 @@ public class MainUI extends Application {
     /** Creates the broker view UI component. */
     private VBox createBrokerView() {
         VBox box = new VBox(18);
-        box.setPadding(new Insets(24));
+        box.setPadding(new Insets(24, 24, 44, 24));
         box.setStyle("-fx-background-color: " + LIGHT_GRAY + ";");
 
         Label headerLabel = new Label("Marketplace Dashboard");
@@ -1823,56 +1823,70 @@ public class MainUI extends Application {
         subLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + ";");
         VBox hdr = new VBox(2, headerLabel, subLabel);
 
-        HBox statsRow1 = new HBox(12,
-                createStatCard("Active Buyers", buyerCountLabel, ACCENT_BLUE),
-                createStatCard("Active Dealers", dealerCountLabel, WARNING_ORANGE),
-                createStatCard("Active Sessions", activeSessionsLabel, "#8b5cf6"));
-        HBox statsRow2 = new HBox(12,
-                createStatCard("Deals Closed", transactionCountLabel, SUCCESS_GREEN),
-                createStatCard("Failed Deals", failedDealsCountLabel, ERROR_RED),
-                createStatCard("Total Revenue", revenueLabel, "#ec4899"));
-        HBox statsRow3 = new HBox(12,
-                createStatCard("Fixed Fees", fixedFeesLabel, "#06b6d4"),
-                createStatCard("Commission (5% deals)", commissionLabel, SUCCESS_GREEN));
-        for (HBox row : new HBox[] { statsRow1, statsRow2, statsRow3 }) {
-            for (javafx.scene.Node n : row.getChildren())
-                HBox.setHgrow(n, Priority.ALWAYS);
+        GridPane metricsGrid = new GridPane();
+        metricsGrid.setHgap(8);
+        metricsGrid.setVgap(8);
+        ColumnConstraints leftMetricColumn = new ColumnConstraints();
+        leftMetricColumn.setPercentWidth(50);
+        leftMetricColumn.setHgrow(Priority.ALWAYS);
+        ColumnConstraints rightMetricColumn = new ColumnConstraints();
+        rightMetricColumn.setPercentWidth(50);
+        rightMetricColumn.setHgrow(Priority.ALWAYS);
+        metricsGrid.getColumnConstraints().setAll(leftMetricColumn, rightMetricColumn);
+        metricsGrid.add(createCompactStatCard("Active Buyers", buyerCountLabel, ACCENT_BLUE), 0, 0);
+        metricsGrid.add(createCompactStatCard("Active Dealers", dealerCountLabel, WARNING_ORANGE), 1, 0);
+        metricsGrid.add(createCompactStatCard("Active Sessions", activeSessionsLabel, "#8b5cf6"), 0, 1);
+        metricsGrid.add(createCompactStatCard("Deals Closed", transactionCountLabel, SUCCESS_GREEN), 1, 1);
+        metricsGrid.add(createCompactStatCard("Failed Deals", failedDealsCountLabel, ERROR_RED), 0, 2, 2, 1);
+        Node revenueCard = createWideStatCard("Total Revenue", revenueLabel, "#ec4899");
+        Node fixedFeesCard = createWideStatCard("Fixed Fees", fixedFeesLabel, "#06b6d4");
+        Node commissionCard = createWideStatCard("Commission", commissionLabel, SUCCESS_GREEN);
+        metricsGrid.add(revenueCard, 0, 3, 2, 1);
+        metricsGrid.add(fixedFeesCard, 0, 4, 2, 1);
+        metricsGrid.add(commissionCard, 0, 5, 2, 1);
+        for (Node metricCard : metricsGrid.getChildren()) {
+            GridPane.setHgrow(metricCard, Priority.ALWAYS);
+            GridPane.setFillWidth(metricCard, true);
         }
-        VBox statsSection = new VBox(10, statsRow1, statsRow2, statsRow3);
+
+        VBox statsSection = createPanel(10, new Insets(16));
+        statsSection.getChildren().addAll(createSectionLabel("Marketplace metrics"), metricsGrid);
 
         dashboardEventsArea = new TextArea();
         dashboardEventsArea.setEditable(false);
         dashboardEventsArea.setWrapText(true);
-        dashboardEventsArea.setPrefRowCount(9);
+        dashboardEventsArea.setPrefRowCount(12);
+        dashboardEventsArea.setMinHeight(220);
+        dashboardEventsArea.setPrefHeight(300);
+        dashboardEventsArea.setMaxHeight(320);
         dashboardEventsArea.setStyle(textAreaStyle(true));
 
         VBox brokerFeed = createPanel(10, new Insets(16));
         brokerFeed.getChildren().addAll(createSectionLabel("Broker event feed"), dashboardEventsArea);
-
-        VBox checklist = new VBox(8,
-                createSectionLabel("Demo checklist"),
-                createChecklistItem("1. Register dealers or use Demo Setup"),
-                createChecklistItem("2. Add waiting buyers"),
-                createChecklistItem("3. Press Start and watch broker-routed offers"),
-                createChecklistItem("4. Use Session Detail to explain a deal"));
-        checklist.setPadding(new Insets(16));
-        checklist.setStyle("-fx-background-color: #ecfeff; -fx-background-radius: 14;"
-                + "-fx-border-color: #67e8f9; -fx-border-radius: 14; -fx-border-width: 1;");
+        brokerFeed.setMaxHeight(Region.USE_PREF_SIZE);
 
         VBox chartSection = createNegotiationVisualiser();
+        chartSection.setMaxHeight(Double.MAX_VALUE);
 
-
-        VBox sideCol = new VBox(14, brokerFeed, checklist);
+        VBox sideCol = new VBox(14, statsSection, brokerFeed);
         sideCol.setMinWidth(300);
         sideCol.setPrefWidth(340);
         sideCol.setMaxWidth(380);
+        sideCol.setMaxHeight(Region.USE_PREF_SIZE);
 
         HBox bodyRow = new HBox(16, chartSection, sideCol);
+        bodyRow.setPadding(new Insets(0, 0, 28, 0));
+        bodyRow.setFillHeight(true);
+        bodyRow.setMinHeight(0);
+        bodyRow.setPrefHeight(Region.USE_COMPUTED_SIZE);
         HBox.setHgrow(chartSection, Priority.ALWAYS);
         VBox.setVgrow(chartSection, Priority.ALWAYS);
+        VBox.setVgrow(brokerFeed, Priority.NEVER);
+        HBox.setHgrow(sideCol, Priority.NEVER);
+        VBox.setVgrow(sideCol, Priority.ALWAYS);
         VBox.setVgrow(bodyRow, Priority.ALWAYS);
 
-        box.getChildren().addAll(hdr, statsSection, bodyRow);
+        box.getChildren().addAll(hdr, bodyRow);
         VBox.setVgrow(box, Priority.ALWAYS);
         return box;
     }
@@ -3168,6 +3182,52 @@ public class MainUI extends Application {
         Label titleLabel = new Label(title);
         titleLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + TEXT_MUTED + "; -fx-font-weight: 600;");
         valueLabel.setStyle("-fx-font-size: 28; -fx-font-weight: 700; -fx-text-fill: " + color + ";");
+        card.getChildren().addAll(titleLabel, valueLabel);
+        return card;
+    }
+
+    /** Creates a compact dashboard stat card for sidebar metrics. */
+    private VBox createCompactStatCard(String title, Label valueLabel, String color) {
+        VBox card = new VBox(3);
+        card.setMinHeight(64);
+        card.setMaxWidth(Double.MAX_VALUE);
+        card.setPadding(new Insets(10, 12, 9, 12));
+        card.setStyle("-fx-background-color: " + SURFACE + "; -fx-background-radius: 10;"
+                + "-fx-border-color: #dbeafe #dbeafe " + color + " #dbeafe;"
+                + "-fx-border-width: 1 1 3 1;"
+                + "-fx-border-radius: 10; -fx-effect: " + CARD_SHADOW + ";");
+
+        Label titleLabel = new Label(title);
+        titleLabel.setWrapText(true);
+        titleLabel.setStyle("-fx-font-size: 10.5; -fx-text-fill: " + TEXT_MUTED + "; -fx-font-weight: 700;");
+        valueLabel.setWrapText(true);
+        valueLabel.setMinWidth(0);
+        valueLabel.setMaxWidth(Double.MAX_VALUE);
+        valueLabel.setStyle("-fx-font-size: 20; -fx-font-weight: 800; -fx-text-fill: " + color + ";");
+        card.getChildren().addAll(titleLabel, valueLabel);
+        return card;
+    }
+
+    /** Creates a full-width dashboard stat card for currency values. */
+    private HBox createWideStatCard(String title, Label valueLabel, String color) {
+        HBox card = new HBox(12);
+        card.setMinHeight(58);
+        card.setMaxWidth(Double.MAX_VALUE);
+        card.setPadding(new Insets(10, 12, 9, 12));
+        card.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        card.setStyle("-fx-background-color: " + SURFACE + "; -fx-background-radius: 10;"
+                + "-fx-border-color: #dbeafe #dbeafe " + color + " #dbeafe;"
+                + "-fx-border-width: 1 1 3 1;"
+                + "-fx-border-radius: 10; -fx-effect: " + CARD_SHADOW + ";");
+
+        Label titleLabel = new Label(title);
+        titleLabel.setMinWidth(92);
+        titleLabel.setStyle("-fx-font-size: 10.5; -fx-text-fill: " + TEXT_MUTED + "; -fx-font-weight: 700;");
+        valueLabel.setWrapText(false);
+        valueLabel.setMinWidth(0);
+        valueLabel.setMaxWidth(Double.MAX_VALUE);
+        valueLabel.setStyle("-fx-font-size: 20; -fx-font-weight: 800; -fx-text-fill: " + color + ";");
+        HBox.setHgrow(valueLabel, Priority.ALWAYS);
         card.getChildren().addAll(titleLabel, valueLabel);
         return card;
     }
