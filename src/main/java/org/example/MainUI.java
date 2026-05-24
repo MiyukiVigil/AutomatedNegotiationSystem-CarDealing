@@ -218,7 +218,7 @@ public class MainUI extends Application {
 
         /** Captures one price, actor, session, car, and event for charting. */
         private TrajectoryPoint(int cycle, double price, String agent, String sessionId, String car,
-                                TrajectoryEvent event) {
+                TrajectoryEvent event) {
             this.cycle = cycle;
             this.price = price;
             this.agent = agent;
@@ -285,8 +285,6 @@ public class MainUI extends Application {
                     || isPriceUpdate;
             boolean isNegotiationAction = isDealSettled || isNoDeal || isRelay || isPriceUpdate
                     || msg.contains("STATUS:") || msg.contains("AGREED") || msg.contains("NEGOTIATION:");
-            // ★ ADDED: Flag for OpponentModel prediction logs
-            boolean isPrediction = msg.contains("PREDICT:");
 
             Platform.runLater(() -> {
                 rawLogArea.appendText(formattedMsg);
@@ -302,8 +300,7 @@ public class MainUI extends Application {
 
                 if (isSetupMsg || isBuyerReg || isDealerReg || isCycleShift
                         || isSessionStart || isFeeCharged || isDealSettled
-                        || isRevenue || isNoDeal || isPerformance || isNegotiationAction
-                        || isPrediction) {
+                        || isRevenue || isNoDeal || isPerformance || isNegotiationAction) {
                     TimelineLogEntry timelineEntry = formatTimelineLogEntry(msg);
                     if (timelineEntry.visibleInTimeline) {
                         logArea.appendText(timestamp + timelinePrefix(timelineEntry.category)
@@ -467,9 +464,7 @@ public class MainUI extends Application {
             return hiddenTimeline(LogCategory.DEBUG, msg);
         }
         if (msg.contains("[BROKER] SEARCH:")) {
-            // ★ UPDATED: Show full search result including ranking info
-            String searchText = stripBrokerPrefix(msg).replace("SEARCH:", "").trim();
-            return visibleTimeline(LogCategory.SEARCH, searchText, false);
+            return visibleTimeline(LogCategory.SEARCH, stripBrokerPrefix(msg), false);
         }
         if (msg.contains("[BROKER] LISTING:")) {
             return visibleTimeline(LogCategory.SEARCH, formatListingTimeline(msg), false);
@@ -498,12 +493,6 @@ public class MainUI extends Application {
         }
         if (msg.contains("STATUS: Negotiation dragging. Accelerated offer")) {
             return visibleTimeline(LogCategory.OFFER, formatAccelerationTimeline(msg), false);
-        }
-        // ★ ADDED: Show OpponentModel prediction logs in the Activity Log
-        if (msg.contains("PREDICT:")) {
-            String agentName = agentName(msg);
-            String predictText = msg.substring(msg.indexOf("PREDICT:"));
-            return visibleTimeline(LogCategory.PREDICT, agentName + ": " + predictText, false);
         }
         if (msg.contains("SUCCESS!")) {
             return hiddenTimeline(LogCategory.DEBUG, msg);
@@ -561,8 +550,6 @@ public class MainUI extends Application {
                 return "Revenue";
             case CYCLE:
                 return "Cycle";
-            case PREDICT:
-                return "Predict";
             default:
                 return "Debug";
         }
@@ -1360,7 +1347,6 @@ public class MainUI extends Application {
         FAILURE,
         REVENUE,
         CYCLE,
-        PREDICT,
         DEBUG
     }
 
@@ -1373,7 +1359,7 @@ public class MainUI extends Application {
 
         /** Stores one formatted timeline line and where it should be displayed. */
         private TimelineLogEntry(LogCategory category, String message, boolean visibleInTimeline,
-                                 boolean visibleOnDashboard) {
+                boolean visibleOnDashboard) {
             this.category = category;
             this.message = message;
             this.visibleInTimeline = visibleInTimeline;
@@ -4194,3 +4180,4 @@ public class MainUI extends Application {
         void log(String message);
     }
 }
+
