@@ -178,25 +178,55 @@ public class BrokerAgent extends Agent {
         String[] parts = msg.getContent().split(";", 2);
         String sessionId = parts[0];
         String carModel  = parts.length > 1 ? parts[1] : parts[0];
+        String buyerName = msg.getSender().getLocalName();
 
-        StringBuilder results = new StringBuilder();
-        int matchCount = 0;
+        // ★ FIX C: Rank matching dealers by utility score (price closeness + deal history)
+        UtilityPreferences prefs = AppConfig.defaults().utilityPreferences();
+        List<CarListing> matches = new ArrayList<>();
         for (CarListing cl : inventory) {
             if (cl.model.equalsIgnoreCase(carModel) && cl.stock > 0) {
-                results.append(cl.dealer).append(":").append(cl.price)
-                       .append(":").append(cl.reservePrice).append(",");
-                matchCount++;
+                matches.add(cl);
             }
         }
+
+        // ★ FIX D: Sort by deal history success rate first, then by price (lowest first)
+        matches.sort((a, b) -> {
+            int aDeals = getDealerSuccessCount(a.dealer);
+            int bDeals = getDealerSuccessCount(b.dealer);
+            if (bDeals != aDeals) return Integer.compare(bDeals, aDeals); // more deals = better
+            return Integer.compare(a.price, b.price); // then cheapest first
+        });
+
+        StringBuilder results = new StringBuilder();
+        for (CarListing cl : matches) {
+            results.append(cl.dealer).append(":").append(cl.price)
+                    .append(":").append(cl.reservePrice).append(",");
+        }
+
         ACLMessage reply = msg.createReply();
         reply.setPerformative(ACLMessage.PROPOSE);
         reply.setOntology("BROKER_SHORTLIST");
         reply.setContent(sessionId + ";" + (results.length() > 0 ? results.toString() : "NONE"));
         send(reply);
 
-        log(matchCount > 0
-                ? "SEARCH: Found " + matchCount + " " + carModel + "(s) for " + msg.getSender().getLocalName()
-                : "SEARCH: No " + carModel + " available for " + msg.getSender().getLocalName());
+        if (!matches.isEmpty()) {
+            log("SEARCH: Found " + matches.size() + " " + carModel + "(s) for " + buyerName
+                    + " | Ranked by deal history + price");
+        } else {
+            log("SEARCH: No " + carModel + " available for " + buyerName);
+        }
+    }
+
+    /**
+     * ★ FIX D: Returns how many successful deals a dealer has completed.
+     * Used to rank dealers — buyers are routed to dealers with proven track records first.
+     */
+    private int getDealerSuccessCount(String dealerName) {
+        int count = 0;
+        for (Transaction t : transactions) {
+            if (t.dealer.equals(dealerName)) count++;
+        }
+        return count;
     }
 
     /**
@@ -238,10 +268,10 @@ public class BrokerAgent extends Agent {
         totalRevenue += appConfig.fixedFee();
         session.feeCharged = true;
         log("SESSION START: " + sessionId + " | Buyer=" + buyerName
-            + " | Dealer=" + dealerName + " | Car=" + carModel + " | FirstOffer=RM" + firstTerms.getPrice()
-            + " | Warranty=" + firstTerms.getWarrantyMonths() + " months | Delivery=" + firstTerms.getDeliveryDays() + " days"
-            + " | BuyerReserve=RM" + buyerReserve
-            + (dealerReserve > 0 ? " | DealerReserve=RM" + dealerReserve : ""));
+                + " | Dealer=" + dealerName + " | Car=" + carModel + " | FirstOffer=RM" + firstTerms.getPrice()
+                + " | Warranty=" + firstTerms.getWarrantyMonths() + " months | Delivery=" + firstTerms.getDeliveryDays() + " days"
+                + " | BuyerReserve=RM" + buyerReserve
+                + (dealerReserve > 0 ? " | DealerReserve=RM" + dealerReserve : ""));
         log("FEE CHARGED: RM" + (int) appConfig.fixedFee() + " | Running Revenue: RM" + (int) totalRevenue);
 
         // Invite dealer with buyer's first offer
