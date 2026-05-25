@@ -3737,6 +3737,11 @@ public class MainUI extends Application {
 
         Label title = new Label("Strategy Defaults");
         title.setStyle("-fx-font-size: 17; -fx-font-weight: bold; -fx-text-fill: " + PRIMARY_BLUE + ";");
+
+        // ★ ADDED: Info label explaining how settings work
+        Label infoLabel = new Label("⚠  Changes apply to new agents only. Agents already running are not affected.");
+        infoLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #e67e22; -fx-font-weight: bold;");
+
         NegotiationConfig defaults = NegotiationConfig.defaults();
 
         strategyChoice = new ComboBox<>();
@@ -3788,8 +3793,67 @@ public class MainUI extends Application {
         grid.add(new Label("Stuck rounds (accelerate):"), 0, 4);
         grid.add(stuckRoundsField, 1, 4);
 
+        // ★ ADDED: Apply button and Reset button
+        Label statusLabel = new Label("");
+        statusLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #27ae60; -fx-font-weight: bold;");
+
+        Button applyBtn = createStyledButton("Apply Settings", PRIMARY_BLUE);
+        applyBtn.setOnAction(e -> {
+            try {
+                // Validate all fields
+                NegotiationConfig.Strategy.valueOf(strategyChoice.getValue());
+                NegotiationConfig.Strategy.valueOf(switchStrategyChoice.getValue());
+                int deadline = Integer.parseInt(deadlineCyclesField.getText().trim());
+                int switchCycle = Integer.parseInt(strategySwitchCycleField.getText().trim());
+                int maxRounds = Integer.parseInt(maxRoundsField.getText().trim());
+                int stuckRounds = Integer.parseInt(stuckRoundsField.getText().trim());
+                int retryLimit = Integer.parseInt(retryLimitField.getText().trim());
+                int buyerStart = Integer.parseInt(buyerStartPercentField.getText().trim());
+                int reserve = Integer.parseInt(reservePercentField.getText().trim());
+
+                if (deadline < 1 || maxRounds < 1 || stuckRounds < 1 || switchCycle < 0
+                        || buyerStart < 1 || buyerStart > 100 || reserve < 1 || reserve > 100) {
+                    showAlert("Invalid values. Check all fields are within valid ranges.", javafx.scene.control.Alert.AlertType.WARNING);
+                    return;
+                }
+
+                statusLabel.setText("✔ Settings saved! New agents will use these values.");
+                loggerLog("[Settings] Strategy settings applied: " + strategyChoice.getValue()
+                        + " → " + switchStrategyChoice.getValue() + " at cycle " + switchCycle
+                        + " | Deadline=" + deadline + " | MaxRounds=" + maxRounds);
+            } catch (Exception ex) {
+                showAlert("Invalid settings. Please check all fields contain valid numbers.", javafx.scene.control.Alert.AlertType.ERROR);
+                statusLabel.setText("");
+            }
+        });
+
+        Button resetBtn = createStyledButton("Reset to Defaults", "#7f8c8d");
+        resetBtn.setOnAction(e -> {
+            NegotiationConfig def = NegotiationConfig.defaults();
+            strategyChoice.setValue(def.getStrategy().name());
+            switchStrategyChoice.setValue(def.getSwitchStrategy().name());
+            deadlineCyclesField.setText(String.valueOf(def.getDeadlineCycles()));
+            strategySwitchCycleField.setText(String.valueOf(def.getStrategySwitchCycle()));
+            buyerStartPercentField.setText(String.valueOf((int)(def.getBuyerStartPercent() * 100)));
+            reservePercentField.setText(String.valueOf((int)(def.getDealerReservePercent() * 100)));
+            maxRoundsField.setText(String.valueOf(def.getMaxRoundsPerDealer()));
+            retryLimitField.setText(String.valueOf(def.getMaxSearchRetries()));
+            stuckRoundsField.setText(String.valueOf(def.getStuckRoundsBeforeAcceleration()));
+            statusLabel.setText("✔ Reset to default values.");
+            loggerLog("[Settings] Strategy settings reset to defaults.");
+        });
+
+        HBox buttonRow = new HBox(12, applyBtn, resetBtn, statusLabel);
+        buttonRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        // ★ Manual Dealer Price Override section
         Label manualTitle = new Label("Manual Dealer Price Override");
         manualTitle.setStyle("-fx-font-size: 13; -fx-font-weight: 700; -fx-text-fill: " + TEXT_MUTED + ";");
+
+        // ★ ADDED: Explanation of what override does
+        Label overrideInfo = new Label("Send a new asking price to a dealer agent while negotiation is running.");
+        overrideInfo.setStyle("-fx-font-size: 11; -fx-text-fill: #7f8c8d;");
+
         manualDealerNameField = createStyledTextField("Dealer agent name (e.g. GreenCars)");
         manualDealerPriceField = createStyledTextField("New asking price (e.g. 95000)");
         Button adjustPriceBtn = createStyledButton("Send Override", SUCCESS_GREEN);
@@ -3797,19 +3861,19 @@ public class MainUI extends Application {
             String dealer = manualDealerNameField.getText().trim();
             String price = manualDealerPriceField.getText().trim();
             if (dealer.isEmpty() || price.isEmpty()) {
-                showAlert("Dealer name and price are required.", Alert.AlertType.WARNING);
+                showAlert("Dealer name and price are required.", javafx.scene.control.Alert.AlertType.WARNING);
                 return;
             }
             try {
                 Integer.parseInt(price);
                 sendDealerPriceAdjustment(dealer, price);
-                showAlert("Price override sent to " + dealer, Alert.AlertType.INFORMATION);
+                showAlert("Price override sent to " + dealer, javafx.scene.control.Alert.AlertType.INFORMATION);
             } catch (NumberFormatException ex) {
-                showAlert("Price must be a valid integer.", Alert.AlertType.ERROR);
+                showAlert("Price must be a valid integer.", javafx.scene.control.Alert.AlertType.ERROR);
             }
         });
         HBox manualControls = new HBox(12, manualDealerNameField, manualDealerPriceField, adjustPriceBtn);
-        panel.getChildren().addAll(title, grid, new Separator(), manualTitle, manualControls);
+        panel.getChildren().addAll(title, infoLabel, grid, buttonRow, new Separator(), manualTitle, overrideInfo, manualControls);
         return panel;
     }
 
