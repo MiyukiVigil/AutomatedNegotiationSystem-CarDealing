@@ -48,7 +48,7 @@ public class DealerAgent extends Agent {
     private boolean negotiationPaused = false;
     private final List<ACLMessage> pausedMessages = new ArrayList<>();
     private final List<Runnable> pausedActions = new ArrayList<>();
-    private static final int NARROW_PRICE_WINDOW = 10_000;
+    // ★ FIXED: Removed hardcoded NARROW_PRICE_WINDOW. Now uses relative 30% of retail price.
 
     /** Per-session state that isolates concurrent buyers for the same dealer. */
     private static class DealerSessionState {
@@ -285,7 +285,13 @@ public class DealerAgent extends Agent {
                     + " | Stock: " + stockCount);
         } else {
             state.status = "COUNTERED";
+            int prevTarget = currentTargetPrice;
             NegotiationTerms counterTerms = dealerCounterTerms();
+
+            // ★ ADDED: Show active strategy and concession amount in log
+            String activeStrategyName = config.getEffectiveStrategy(latestCycle).name();
+            int concessionAmount = prevTarget - currentTargetPrice;
+            String concessionText = concessionAmount > 0 ? " ↓RM" + concessionAmount : "";
 
             // ★ ADDED: Use opponent model — if buyer predicted to reach our target, hold firm
             int predictedBuyerNext = state.buyerModel.predictNextOffer();
@@ -295,7 +301,6 @@ public class DealerAgent extends Agent {
             if (buyerComingToUs) {
                 log("PREDICT: Buyer predicted to offer RM" + predictedBuyerNext
                         + " next round — holding firm at RM" + currentTargetPrice);
-                // Hold current target, don't concede further
                 counterTerms = dealerCounterTerms();
             }
 
@@ -315,7 +320,8 @@ public class DealerAgent extends Agent {
                     });
                 }
             });
-            log("COUNTER: [" + sessionId + "] RM" + currentTargetPrice + termsText(counterTerms));
+            log("COUNTER: [" + sessionId + "] RM" + currentTargetPrice
+                    + termsText(counterTerms) + " [" + activeStrategyName + "]" + concessionText);
         }
     }
 
@@ -417,12 +423,15 @@ public class DealerAgent extends Agent {
         currentTargetPrice = Math.max(minPrice, roundBasedTarget);
     }
 
-    /** Extends the concession deadline for narrow retail-to-reserve price windows. */
+    /** Extends the concession deadline for narrow retail-to-reserve price windows.
+     *  ★ FIXED: Uses relative 30% of retail price threshold instead of hardcoded RM10,000.
+     *  Deadline now triples (matching BuyerAgent behaviour) instead of doubling. */
     private int effectiveDealerDeadlineCycles() {
         int deadline = config.getDeadlineCycles();
         int priceWindow = retailPrice - minPrice;
-        if (priceWindow > 0 && priceWindow <= NARROW_PRICE_WINDOW) {
-            return Math.max(deadline, deadline * 2);
+        int narrowWindow = (int)(retailPrice * 0.30); // ★ FIXED: relative threshold
+        if (priceWindow > 0 && priceWindow <= narrowWindow) {
+            return Math.max(deadline, deadline * 3); // ★ FIXED: triple not double
         }
         return deadline;
     }
