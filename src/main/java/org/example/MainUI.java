@@ -122,14 +122,20 @@ public class MainUI extends Application {
     private javafx.collections.ObservableList<String> manualBuyerAgents = javafx.collections.FXCollections
             .observableArrayList();
     private ComboBox<String> manualBuyerSelect;
+    private Label manualStatusLabel;
     private TextArea manualLogArea;
     private ComboBox<String> manualDealerSelect;
     private TextField manualFirstOfferField;
     private Button manualSendFirstOfferBtn;
+    private TextField manualDealerCounterField;
     private TextField manualCounterPriceField;
     private Button manualSendCounterBtn;
     private Button manualAcceptDealBtn;
     private Button manualWalkAwayBtn;
+    private String manualActiveSessionId;
+    private String manualActiveBuyer;
+    private String manualActiveDealer;
+    private String manualActiveCar;
     private List<String> failedDeals = new ArrayList<>();
     private final Map<String, Integer> failureReasonCounts = new LinkedHashMap<>();
     private TextArea failureReportArea = new TextArea();
@@ -322,6 +328,9 @@ public class MainUI extends Application {
                 }
                 if (isDealerReg) {
                     registerDealerInDashboard(extractQuotedName(msg));
+                }
+                if (isSessionStart || isRelay || isDealSettled || isNoDeal) {
+                    handleManualBrokerLog(msg);
                 }
 
                 if (isSessionStart) {
@@ -1665,6 +1674,7 @@ public class MainUI extends Application {
         }
         if (manualLogArea != null) manualLogArea.clear();
         if (manualBuyerSelect != null) manualBuyerSelect.setValue(null);
+        resetManualSessionState();
         if (manualDealerSelect != null) {
             manualDealerSelect.setValue(null);
             manualDealerSelect.getItems().clear();
@@ -4024,7 +4034,14 @@ public class MainUI extends Application {
         manualBuyerSelect.setPromptText("Select Manual Buyer");
         manualBuyerSelect.setPrefWidth(200);
         manualBuyerSelect.setStyle(comboBoxStyle());
-        topBox.getChildren().addAll(new Label("Controlling:"), manualBuyerSelect);
+        manualStatusLabel = new Label("Waiting for shortlist");
+        manualStatusLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: " + PRIMARY_BLUE + ";");
+        manualBuyerSelect.setOnAction(e -> {
+            manualActiveBuyer = manualBuyerSelect.getValue();
+            resetManualSessionState();
+        });
+        topBox.getChildren().addAll(new Label("Controlling:"), manualBuyerSelect,
+                new Label("Status:"), manualStatusLabel);
 
         manualLogArea = new TextArea();
         manualLogArea.setEditable(false);
@@ -4052,17 +4069,21 @@ public class MainUI extends Application {
         // Negotiation controls
         HBox counterBox = new HBox(10);
         counterBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        manualCounterPriceField = createStyledTextField("Counter RM");
+        manualDealerCounterField = createStyledTextField("Dealer Counter RM");
+        manualDealerCounterField.setEditable(false);
+        manualDealerCounterField.setDisable(true);
+        manualCounterPriceField = createStyledTextField("Your Counter RM");
+        manualCounterPriceField.setDisable(true);
         manualSendCounterBtn = createStyledButton("Send Counter", ACCENT_BLUE);
-        manualAcceptDealBtn = createStyledButton("Accept Offer", SUCCESS_GREEN);
+        manualAcceptDealBtn = createStyledButton("Accept Counter", SUCCESS_GREEN);
         manualWalkAwayBtn = createStyledButton("Walk Away", ERROR_RED);
 
         manualSendCounterBtn.setDisable(true);
         manualAcceptDealBtn.setDisable(true);
         manualWalkAwayBtn.setDisable(true);
 
-        counterBox.getChildren().addAll(manualCounterPriceField, manualSendCounterBtn, manualAcceptDealBtn,
-                manualWalkAwayBtn);
+        counterBox.getChildren().addAll(manualDealerCounterField, manualCounterPriceField, manualSendCounterBtn,
+                manualAcceptDealBtn, manualWalkAwayBtn);
 
         actionPanel.getChildren().addAll(actionTitle, shortlistBox, counterBox);
 
@@ -4077,7 +4098,14 @@ public class MainUI extends Application {
                 return;
             }
             sendAgentCommand(buyer, "MANUAL_ACTION", "SHORTLIST;" + dealer + ";" + offer);
-            manualLogArea.appendText("\n[YOU] Picked " + dealer + " with RM " + offer);
+            manualActiveBuyer = buyer;
+            manualActiveDealer = dealer;
+            appendManualLog("[YOU] Buyer=" + buyer + " | Dealer=" + dealer
+                    + " | First offer=" + manualMoney(offer));
+            showManualWaitingState("Waiting for dealer response",
+                    "Waiting for dealer response...");
+            manualDealerSelect.setDisable(true);
+            manualFirstOfferField.setDisable(true);
             manualSendFirstOfferBtn.setDisable(true);
         });
 
@@ -4089,7 +4117,9 @@ public class MainUI extends Application {
                 return;
             }
             sendAgentCommand(buyer, "MANUAL_ACTION", "COUNTER;" + offer);
-            manualLogArea.appendText("\n[YOU] Countered RM " + offer);
+            appendManualLog("[YOU] " + manualContext() + " | Counter=" + manualMoney(offer));
+            showManualWaitingState("Waiting for dealer response",
+                    "Counter sent. Waiting for dealer response...");
             disableCounterControls();
         });
 
@@ -4101,7 +4131,9 @@ public class MainUI extends Application {
                 return;
             }
             sendAgentCommand(buyer, "MANUAL_ACTION", "ACCEPT;" + offer);
-            manualLogArea.appendText("\n[YOU] Accepted RM " + offer);
+            appendManualLog("[YOU] " + manualContext() + " | Accepted counter at " + manualMoney(offer));
+            showManualWaitingState("Waiting for dealer response",
+                    "Acceptance sent. Waiting for dealer confirmation...");
             disableCounterControls();
         });
 
@@ -4112,8 +4144,8 @@ public class MainUI extends Application {
                 return;
             }
             sendAgentCommand(buyer, "MANUAL_ACTION", "WALKAWAY;");
-            manualLogArea.appendText("\n[YOU] Walked away.");
-            disableCounterControls();
+            appendManualLog("[YOU] " + manualContext() + " | Walked away.");
+            showManualTerminalState("Walked away", "RESULT: Walked away from manual negotiation.");
         });
 
         box.getChildren().addAll(title, topBox, manualLogArea, actionPanel);
@@ -4123,9 +4155,218 @@ public class MainUI extends Application {
 
     /** Disables manual counter controls when no counter is active. */
     private void disableCounterControls() {
+        if (manualCounterPriceField != null) {
+            manualCounterPriceField.setDisable(true);
+        }
         manualSendCounterBtn.setDisable(true);
         manualAcceptDealBtn.setDisable(true);
         manualWalkAwayBtn.setDisable(true);
+    }
+
+    /** Enables manual counter controls for an active dealer counter. */
+    private void enableCounterControls(Integer price) {
+        if (manualDealerCounterField != null) {
+            manualDealerCounterField.setDisable(false);
+            manualDealerCounterField.setText(money(price));
+        }
+        if (manualCounterPriceField != null) {
+            manualCounterPriceField.setDisable(false);
+            manualCounterPriceField.setText(price == null ? "" : String.valueOf(price));
+        }
+        manualSendCounterBtn.setDisable(false);
+        manualAcceptDealBtn.setDisable(false);
+        manualWalkAwayBtn.setDisable(false);
+    }
+
+    /** Disables all controls that would mutate a terminal manual session. */
+    private void disableManualSessionControls() {
+        if (manualDealerSelect != null) manualDealerSelect.setDisable(true);
+        if (manualFirstOfferField != null) manualFirstOfferField.setDisable(true);
+        if (manualSendFirstOfferBtn != null) manualSendFirstOfferBtn.setDisable(true);
+        if (manualDealerCounterField != null) manualDealerCounterField.setDisable(true);
+        disableCounterControls();
+    }
+
+    /** Resets manual session state when the selected controlled buyer changes. */
+    private void resetManualSessionState() {
+        manualActiveBuyer = manualBuyerSelect == null ? null : manualBuyerSelect.getValue();
+        manualActiveSessionId = null;
+        manualActiveDealer = null;
+        manualActiveCar = null;
+        setManualStatus("Waiting for shortlist");
+        if (manualDealerSelect != null) {
+            manualDealerSelect.setDisable(false);
+            manualDealerSelect.getItems().clear();
+            manualDealerSelect.setValue(null);
+        }
+        if (manualFirstOfferField != null) {
+            manualFirstOfferField.clear();
+            manualFirstOfferField.setDisable(false);
+        }
+        if (manualSendFirstOfferBtn != null) manualSendFirstOfferBtn.setDisable(true);
+        if (manualDealerCounterField != null) {
+            manualDealerCounterField.clear();
+            manualDealerCounterField.setDisable(true);
+        }
+        if (manualCounterPriceField != null) {
+            manualCounterPriceField.clear();
+            manualCounterPriceField.setDisable(true);
+        }
+        if (manualSendCounterBtn != null) manualSendCounterBtn.setDisable(true);
+        if (manualAcceptDealBtn != null) manualAcceptDealBtn.setDisable(true);
+        if (manualWalkAwayBtn != null) manualWalkAwayBtn.setDisable(true);
+    }
+
+    /** Updates the manual mode status chip. */
+    private void setManualStatus(String status) {
+        if (manualStatusLabel != null) {
+            manualStatusLabel.setText(status);
+        }
+    }
+
+    /** Appends one line to the manual mode log. */
+    private void appendManualLog(String message) {
+        if (manualLogArea != null && message != null && !message.isBlank()) {
+            manualLogArea.appendText("\n" + message);
+            manualLogArea.setScrollTop(Double.MAX_VALUE);
+        }
+    }
+
+    /** Shows a waiting state after the user has sent a manual command. */
+    private void showManualWaitingState(String status, String message) {
+        setManualStatus(status);
+        appendManualLog("[SYSTEM] " + message);
+    }
+
+    /** Shows a terminal state and prevents stale manual actions. */
+    private void showManualTerminalState(String status, String message) {
+        setManualStatus(status);
+        appendManualLog("[SYSTEM] " + message);
+        disableManualSessionControls();
+    }
+
+    /** Builds compact context for manual log entries. */
+    private String manualContext() {
+        StringBuilder context = new StringBuilder();
+        appendManualContextField(context, "Buyer", manualActiveBuyer);
+        appendManualContextField(context, "Dealer", manualActiveDealer);
+        appendManualContextField(context, "Car", manualActiveCar);
+        appendManualContextField(context, "Session", manualActiveSessionId);
+        return context.length() == 0 ? "Manual session" : context.toString();
+    }
+
+    /** Appends one manual context field if present. */
+    private void appendManualContextField(StringBuilder context, String label, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        if (context.length() > 0) {
+            context.append(" | ");
+        }
+        context.append(label).append("=").append(value);
+    }
+
+    /** Formats a manually entered integer price. */
+    private String manualMoney(String value) {
+        try {
+            return money(Integer.parseInt(value.trim()));
+        } catch (Exception e) {
+            return valueOrNA(value);
+        }
+    }
+
+    /** Returns true when a broker log belongs to the selected manual buyer. */
+    private boolean isSelectedManualBuyer(String buyer) {
+        String selected = manualBuyerSelect == null ? null : manualBuyerSelect.getValue();
+        return selected != null && selected.equals(buyer);
+    }
+
+    /** Updates active manual context from parsed broker fields. */
+    private void updateManualContext(String sessionId, String buyer, String dealer, String car) {
+        if (buyer != null) manualActiveBuyer = buyer;
+        if (sessionId != null) manualActiveSessionId = sessionId;
+        if (dealer != null) manualActiveDealer = dealer;
+        if (car != null) manualActiveCar = car;
+    }
+
+    /** Mirrors authoritative broker events into the Manual Negotiation log. */
+    private void handleManualBrokerLog(String msg) {
+        if (manualLogArea == null || manualBuyerSelect == null || manualBuyerSelect.getValue() == null) {
+            return;
+        }
+
+        if (msg.contains("[BROKER] SESSION START:")) {
+            String payload = substringAfter(msg, "SESSION START:");
+            String buyer = extractBrokerField(payload, "Buyer");
+            if (!isSelectedManualBuyer(buyer)) return;
+            String sessionId = extractSessionId(payload);
+            String dealer = extractBrokerField(payload, "Dealer");
+            String car = extractBrokerField(payload, "Car");
+            String firstOffer = extractBrokerField(payload, "FirstOffer");
+            updateManualContext(sessionId, buyer, dealer, car);
+            appendManualLog("[BROKER] Session opened | " + manualContext()
+                    + " | First offer=" + valueOrNA(firstOffer));
+            setManualStatus("Waiting for dealer response");
+            return;
+        }
+
+        if (msg.contains("[BROKER] RELAY COUNTER:")) {
+            String payload = substringAfter(msg, "RELAY COUNTER:");
+            String buyer = extractBrokerField(payload, "Buyer");
+            if (!isSelectedManualBuyer(buyer)) return;
+            String sessionId = extractSessionId(payload);
+            String dealer = extractBrokerField(payload, "Dealer");
+            Integer price = extractFirstMoneyValue(payload);
+            updateManualContext(sessionId, buyer, dealer, null);
+            appendManualLog("[DEALER] " + manualContext() + " | Counter=" + money(price));
+            enableCounterControls(price);
+            setManualStatus("Dealer counter received");
+            return;
+        }
+
+        if (msg.contains("[BROKER] RELAY OFFER:")) {
+            String payload = substringAfter(msg, "RELAY OFFER:");
+            String buyer = extractBrokerField(payload, "Buyer");
+            if (!isSelectedManualBuyer(buyer)) return;
+            String sessionId = extractSessionId(payload);
+            String dealer = extractBrokerField(payload, "Dealer");
+            Integer price = extractFirstMoneyValue(payload);
+            updateManualContext(sessionId, buyer, dealer, null);
+            appendManualLog("[BROKER] Routed offer | " + manualContext()
+                    + " | Offer=" + money(price));
+            return;
+        }
+
+        if (msg.contains("[BROKER] DEAL SETTLED:")) {
+            String payload = substringAfter(msg, "DEAL SETTLED:");
+            String buyer = extractBrokerField(payload, "Buyer");
+            if (!isSelectedManualBuyer(buyer)) return;
+            String sessionId = extractSessionId(payload);
+            String dealer = extractBrokerField(payload, "Dealer");
+            String car = extractBrokerField(payload, "Car");
+            String price = extractBrokerField(payload, "Price");
+            updateManualContext(sessionId, buyer, dealer, car);
+            appendManualLog("[DEALER] " + valueOrNA(dealer)
+                    + " accepted the offer | " + manualContext()
+                    + " | Price=" + valueOrNA(price));
+            showManualTerminalState("Deal settled",
+                    "RESULT: Deal settled at " + valueOrNA(price) + ".");
+            return;
+        }
+
+        if (msg.contains("[BROKER] NO DEAL:")) {
+            String payload = substringAfter(msg, "NO DEAL:");
+            String buyer = extractBrokerField(payload, "Buyer");
+            if (!isSelectedManualBuyer(buyer)) return;
+            String sessionId = extractSessionId(payload);
+            String dealer = extractBrokerField(payload, "Dealer");
+            String car = extractBrokerField(payload, "Car");
+            String reason = extractBrokerField(payload, "Reason");
+            updateManualContext(sessionId, buyer, dealer, car);
+            showManualTerminalState("No deal",
+                    "RESULT: No deal | " + manualContext()
+                            + " | Reason=" + humanFailureReason(reason));
+        }
     }
 
     /** Returns true when text represents an integer greater than zero. */
@@ -4154,32 +4395,36 @@ public class MainUI extends Application {
 
             if (payload.startsWith("SHORTLIST:")) {
                 String csv = payload.substring(10);
-                manualLogArea.appendText("\n\n[" + agentName + "] Received Shortlist Options:\n");
+                appendManualLog("");
+                appendManualLog("[" + agentName + "] Received shortlist options:");
                 for (String option : csv.split(",")) {
                     if (option.isEmpty())
                         continue;
                     String[] parts = option.split(":");
-                    manualLogArea.appendText("  - " + parts[0] + " (Listed: RM" + parts[1] + ")\n");
+                    appendManualLog("  - Dealer=" + parts[0] + " | Listed=RM " + parts[1]);
                 }
                 if (agentName.equals(manualBuyerSelect.getValue())) {
+                    manualActiveBuyer = agentName;
+                    setManualStatus("Choose dealer and first offer");
                     manualDealerSelect.getItems().clear();
+                    manualDealerSelect.setDisable(false);
                     for (String d : csv.split(",")) {
                         if (!d.isEmpty())
                             manualDealerSelect.getItems().add(d.split(":")[0]);
                     }
+                    manualFirstOfferField.setDisable(false);
                     manualSendFirstOfferBtn.setDisable(false);
                 }
             } else if (payload.startsWith("COUNTER:")) {
                 String[] p = payload.substring(8).split(":");
                 String dealer = p[0];
                 String price = p[1];
-                manualLogArea.appendText("\n[" + agentName + "] " + dealer + " counters RM " + price);
 
                 if (agentName.equals(manualBuyerSelect.getValue())) {
-                    manualCounterPriceField.setText(price);
-                    manualSendCounterBtn.setDisable(false);
-                    manualAcceptDealBtn.setDisable(false);
-                    manualWalkAwayBtn.setDisable(false);
+                    manualActiveBuyer = agentName;
+                    manualActiveDealer = dealer;
+                    enableCounterControls(Integer.parseInt(price.trim()));
+                    setManualStatus("Dealer counter received");
                 }
             }
         } catch (Exception e) {
