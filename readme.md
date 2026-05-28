@@ -2,6 +2,8 @@
 
 This project is a JADE-based multi-agent car marketplace. Dealer agents list cars, buyer agents search for matching cars, the broker agent matches buyers to dealers and records outcomes, and a space-control agent manages negotiation cycles. A JavaFX interface is used to create agents, configure negotiation strategies, control the simulation, and view logs/metrics.
 
+Negotiation is broker-routed: buyers do not contact dealers directly. Offers are represented as multi-attribute terms containing price, warranty months, and delivery days, then routed through the broker as ACL messages.
+
 ## Project Goals
 
 - Simulate autonomous buyer-dealer negotiation using JADE agents.
@@ -63,6 +65,8 @@ mvn javafx:run
 
 Runtime defaults are loaded from `src/main/resources/negotiation-defaults.properties`. The file controls broker fees, commission, session timeout, strategy defaults, negotiation limits, and the starter weights for multi-attribute utility scoring. The JavaFX settings panel loads those defaults on startup and still lets you override strategy values for newly created agents.
 
+Current default values include a RM50 broker fixed fee, 5% commission, 120-second session timeout, Boulware-to-Conceder switching at cycle 3, 20 deadline cycles, buyer starting offer at 70% of budget, dealer reserve at 70% of retail price, 10 rounds per dealer, 2 search retries, and default utility weights of 70% price, 20% warranty, and 10% delivery.
+
 ## Demo Flow
 
 1. Register one or more dealer agents in the Dealer Portal.
@@ -75,6 +79,8 @@ Runtime defaults are loaded from `src/main/resources/negotiation-defaults.proper
 8. Use `Sniffer` to open the JADE Sniffer and observe ACL messages.
 9. Use `Stop` to terminate active buyer negotiations and record them as `NO_DEAL;USER_STOPPED`.
 10. Use `Clear Session` to reset the broker, space-control cycle, active agents, metrics, logs, and visualisers before starting another run.
+
+Manual buyer agents can be created from the Buyer Portal by enabling manual negotiation mode. Those buyers still use the same broker-routed protocol, but the Manual Negotiation page lets the user choose the dealer, send the first offer, counter dealer offers, accept a counter, or walk away.
 
 Demo Agents
 ----------
@@ -107,6 +113,11 @@ Most demo agent archetypes inherit the Market Analysis settings, while `DemoBuye
 | `src/main/java/org/example/agents/SpaceControl.java` | Cycle manager. Broadcasts market cycle updates and supports pause/resume/step controls. |
 | `src/main/java/org/example/agents/SpaceCommandAgent.java` | Short-lived helper agent used by the UI to send ACL commands into the JADE platform. |
 | `src/main/java/org/example/agents/NegotiationConfig.java` | Shared configuration object for strategy, deadline, reserve price, starting offer, retries, and round limits. |
+| `src/main/java/org/example/agents/NegotiationTerms.java` | Immutable multi-attribute offer value containing price, warranty months, and delivery days. Also serializes/deserializes ACL payload segments. |
+| `src/main/java/org/example/agents/UtilityPreferences.java` | Weighted additive utility model used by buyers and dealers to score price, warranty, and delivery terms. |
+| `src/main/java/org/example/agents/OpponentModel.java` | Offer-history model that predicts the opponent's next price and how many rounds they may need to reach the current target. |
+| `src/main/java/org/example/agents/AppConfig.java` | Loads typed runtime defaults from `negotiation-defaults.properties` with hardcoded fallbacks. |
+| `src/main/resources/negotiation-defaults.properties` | External runtime settings for broker fees, timeout scanning, strategy defaults, and utility defaults. |
 
 ## User Interface
 
@@ -117,9 +128,11 @@ The controls above the tabs are available from every screen:
 - `Start`: sends `START_NEGOTIATION` to all waiting buyer agents.
 - `Demo Setup`: creates a stress-test scenario with 3 well-stocked dealers and 8 waiting buyers, including varied Camry buyers, RM10,000-headroom buyers, one intentional low-budget failure, visible strategy switching, and extra rounds so negotiations do not fail immediately at the switch.
 - `Pause` / `Resume`: sends `PAUSE` or `RESUME` to `SpaceControl`.
+- During pause, the UI also sends `PAUSE_NEGOTIATION` / `RESUME_NEGOTIATION` to active buyers, dealers, and the broker so broker-routed offer messages are held and resumed consistently.
 - `Stop`: sends `STOP_NEGOTIATION` to buyer agents and records `NO_DEAL;USER_STOPPED`.
 - `Clear Session`: kills current buyer/dealer agents, clears broker inventory and sessions, resets the cycle count, and clears UI metrics/logs/visualisers for a fresh run.
 - `Step Cycle`: sends `STEP` to `SpaceControl` and advances one cycle immediately.
+- `Speed`: sends `SET_SPEED` to `SpaceControl` to change the automatic cycle delay.
 - `Sniffer`: launches the JADE Sniffer visual message tool.
 
 ### Dashboard
@@ -131,6 +144,10 @@ Shows system-level information:
 - closed deals
 - broker revenue
 - negotiation price trajectory chart
+- live listing board
+- active session view
+- market and agent visualisers
+- agent performance summary
 - setup status messages
 
 ### Participants Page
@@ -147,6 +164,22 @@ Inputs:
 - desired car
 - maximum budget
 - manual negotiation mode toggle
+
+### Manual Negotiation
+
+Controls buyers that were created with manual negotiation mode enabled.
+
+Main actions:
+
+- select a manual buyer
+- choose a shortlisted dealer
+- send the first offer
+- view the dealer counter
+- send a counter offer
+- accept a counter by sending the selected price back through the broker
+- walk away from the active session
+
+Manual actions are sent to the buyer as `MANUAL_ACTION` messages. The buyer then sends normal broker protocol messages such as `BUYER_SHORTLIST`, `BUYER_COUNTER`, or `BUYER_WALKAWAY`, so manual play still appears in the broker log, performance metrics, and JADE Sniffer.
 
 ### Dealer Portal
 
@@ -208,12 +241,14 @@ Main behaviour:
 1. Waits until it receives `START_NEGOTIATION`.
 2. Sends `REQUEST` to the broker for the desired car.
 3. Receives dealer options from the broker.
-4. Checks whether any dealer reserve price is within the buyer budget.
-5. Chooses up to three best dealer options and sends first-offer terms through the broker.
+4. Sorts and limits dealer options, then checks whether any dealer reserve price is within the buyer budget.
+5. Chooses up to three dealer options and sends first-offer terms through the broker.
 6. Handles `REJECT_PROPOSAL` counter-offers.
-7. Sends revised multi-attribute terms if still negotiating.
-8. Handles `ACCEPT_PROPOSAL`, logs the purchase, deregisters from `SpaceControl`, and terminates.
-9. Sends no-deal confirmation if budget, retry, or round limits are exceeded, then terminates.
+7. Records dealer counters in `OpponentModel`, logs prediction summaries, and may hold firm if the dealer is predicted to come down to the buyer's current offer.
+8. Sends revised multi-attribute terms if still negotiating.
+9. In manual mode, waits for user `MANUAL_ACTION` commands after the shortlist and counter-offer stages.
+10. Handles `ACCEPT_PROPOSAL`, logs the purchase, deregisters from `SpaceControl`, and terminates.
+11. Sends no-deal confirmation if budget, retry, or round limits are exceeded, then terminates.
 
 Important state:
 
@@ -221,10 +256,13 @@ Important state:
 - `maxBudget`: maximum amount the buyer can pay.
 - `initialOffer`: starting offer based on configured buyer start percentage.
 - `currentWillingOffer`: buyer's current cycle/round-paced offer.
+- `currentTerms`: current price, warranty, and delivery offer terms.
 - `dealers`: dealer options returned by the broker.
 - `negotiationRound`: number of negotiation rounds with the current dealer.
 - `searchRetries`: number of broker search retries.
 - `negotiationStarted`: controls whether the buyer waits or starts immediately.
+- `dealerModel`: `OpponentModel` tracking dealer counter-offer trend for the active dealer.
+- `isManualStrategy`: controls whether the buyer waits for UI commands during negotiation.
 
 ### DealerAgent
 
@@ -237,10 +275,12 @@ Main behaviour:
 3. Calculates a dynamic target price from market cycles and local negotiation rounds.
 4. Receives buyer first-offer terms from the broker.
 5. Selects whether to engage the buyer; clearly unworkable first offers can be rejected.
-6. Accepts if the buyer terms meet price/utility targets.
-7. Rejects with multi-attribute counter-terms if the buyer offer is too low.
-8. Reduces stock after a successful sale.
-9. Terminates when stock reaches zero.
+6. Records buyer offers in a per-session `OpponentModel`, logs prediction summaries, and may hold firm if the buyer is predicted to reach the dealer target soon.
+7. Accepts if the buyer terms meet price/utility targets.
+8. Rejects with multi-attribute counter-terms if the buyer offer is too low.
+9. Reduces stock after a successful sale.
+10. Notifies the broker about pending sessions when stock reaches zero.
+11. Terminates when stock reaches zero.
 
 Important state:
 
@@ -249,6 +289,7 @@ Important state:
 - `currentTargetPrice`: current asking target based on cycle progress, negotiation rounds, strategy, and reserve protection.
 - `stockCount`: remaining stock.
 - `manualTargetPrice`: optional manual price override from the UI.
+- `activeSessions`: per-session state for concurrent buyer negotiations, including latest terms, rounds, status, and buyer opponent model.
 
 ### BrokerAgent
 
@@ -259,9 +300,9 @@ Main behaviour:
 1. Receives dealer listings through `INFORM`.
 2. Stores car model, dealer name, retail price, reserve price, and stock.
 3. Receives buyer search requests through `REQUEST`.
-4. Replies with matching dealers using `PROPOSE`.
+4. Replies with matching dealers using `PROPOSE`, ranked by dealer success history and then lowest listed price.
 5. Creates negotiation sessions from buyer shortlists and routes every offer, counter, accept, and walkaway message.
-6. Applies timeout handling, fixed fees, commission, total revenue, and performance metrics.
+6. Handles dealer rejection, dealer sold-out notices, duplicate sessions, timeouts, fixed fees, commission, total revenue, and performance metrics.
 
 Performance metrics logged:
 
@@ -281,7 +322,7 @@ Main behaviour:
 2. Receives `REGISTER` and `DEREGISTER`.
 3. Broadcasts `CYCLE_UPDATE` messages.
 4. Advances cycles when market actions complete.
-5. Supports `PAUSE`, `RESUME`, and `STEP`.
+5. Supports `PAUSE`, `RESUME`, `STEP`, `SET_SPEED`, and `RESET_SESSION`.
 
 The cycle number is important because buyer and dealer prices are calculated using time-dependent concession formulas.
 
@@ -297,6 +338,59 @@ Examples:
 - UI creates `SpaceCommandAgent` to send `START_NEGOTIATION` to a buyer.
 - UI creates `SpaceCommandAgent` to send `PRICE_ADJUSTMENT` to a dealer.
 
+### NegotiationTerms
+
+`NegotiationTerms` is the shared offer object used in broker-routed payloads.
+
+Fields:
+
+- `price`: offered car price in RM.
+- `warrantyMonths`: warranty length included in the offer.
+- `deliveryDays`: delivery time included in the offer.
+
+Payload format:
+
+```text
+price:warrantyMonths:deliveryDays
+```
+
+Legacy price-only payloads are still accepted. When warranty or delivery is missing, defaults are loaded from `AppConfig`.
+
+### UtilityPreferences
+
+`UtilityPreferences` scores non-price negotiation quality using weighted additive utility.
+
+Buyer utility rewards:
+
+- lower price
+- longer warranty
+- shorter delivery
+
+Dealer utility rewards:
+
+- higher price above reserve
+- shorter warranty obligation
+- longer delivery flexibility
+
+The current defaults are `0.70` price, `0.20` warranty, and `0.10` delivery. Weights are normalized inside the class.
+
+### OpponentModel
+
+`OpponentModel` records the last few observed opponent prices and estimates the offer trend.
+
+Main behaviour:
+
+1. Stores chronological offer history.
+2. Calculates average price change per round over a rolling window of up to 5 offers.
+3. Predicts the opponent's next offer.
+4. Estimates how many more rounds the opponent may need to reach a target price.
+5. Produces human-readable prediction summaries for the Activity Log.
+
+Usage:
+
+- `BuyerAgent` models dealer counter-offers. If the dealer is predicted to come down to the buyer's current willing offer, the buyer can hold firm instead of increasing.
+- `DealerAgent` models buyer offers per session. If the buyer is predicted to reach the dealer target soon, the dealer can hold firm instead of conceding further.
+
 ## ACL Communication Protocol
 
 | Sender | Receiver | Performative | Ontology | Content | Meaning |
@@ -308,19 +402,26 @@ Examples:
 | Broker | Dealer | `REQUEST` | `BROKER_INVITE` | `sessionId;buyerName;carModel;price:warrantyMonths:deliveryDays` | Broker routes the first buyer offer. |
 | Dealer | Broker | `REJECT_PROPOSAL` | `DEALER_REJECT` | `sessionId;reason` | Dealer declines to engage a low-value first offer. |
 | Dealer | Broker | `REJECT_PROPOSAL` | `DEALER_COUNTER` | `sessionId;price:warrantyMonths:deliveryDays` | Dealer counters through broker. |
+| Dealer | Broker | `INFORM` | `DEALER_SOLD_OUT` | `sessionId1,sessionId2,...` | Dealer reports pending sessions that can no longer be served after stock reaches zero. |
 | Broker | Buyer | `REJECT_PROPOSAL` | `BROKER_RELAY_COUNTER` | `sessionId;dealerName;price:warrantyMonths:deliveryDays` | Broker routes dealer counter to buyer. |
 | Buyer | Broker | `PROPOSE` | `BUYER_COUNTER` | `sessionId;price:warrantyMonths:deliveryDays` | Buyer counters through broker. |
 | Broker | Dealer | `PROPOSE` | `BROKER_RELAY_OFFER` | `sessionId;buyerName;carModel;price:warrantyMonths:deliveryDays` | Broker routes buyer counter to dealer. |
 | Dealer | Broker | `ACCEPT_PROPOSAL` | `DEALER_ACCEPT` | `sessionId;price:warrantyMonths:deliveryDays` | Dealer accepts through broker. |
 | Broker | Buyer | `ACCEPT_PROPOSAL` | `BROKER_RELAY_ACCEPT` | `sessionId;dealerName;price:warrantyMonths:deliveryDays` | Broker confirms successful deal. |
+| Broker | Buyer | `FAILURE` | `BROKER_SESSION_REJECTED` | `sessionId;reason` | Broker tells the buyer a session was rejected, duplicated, or timed out. |
+| Broker | Buyer | `INFORM` | `BROKER_RELAY_SOLD_OUT` | `sessionId;dealerName` | Broker tells the buyer the dealer sold out so the buyer can try the next dealer. |
 | Buyer | Broker | `FAILURE` | `BUYER_WALKAWAY` | `sessionId;reason[;car;budget]` | Buyer reports failed negotiation or pre-session failure. |
 | Buyer/Dealer | SpaceControl | `INFORM` | `REGISTER` | empty | Agent joins cycle updates. |
 | Buyer/Dealer | SpaceControl | `INFORM` | `DEREGISTER` | empty | Agent leaves cycle updates. |
 | Buyer | SpaceControl | `INFORM` | `ACTION_COMPLETED` | empty | Negotiation action completed; cycle may advance. |
+| Dealer | SpaceControl | `INFORM` | `ACTION_COMPLETED` | empty | Dealer completed a brokered action; cycle may advance. |
 | SpaceControl | Buyer/Dealer | `PROPAGATE` | `CYCLE_UPDATE` | `cycleNumber` | Broadcasts new market cycle. |
 | UI helper | Buyer | `INFORM` | `START_NEGOTIATION` | empty | Starts waiting buyer. |
 | UI helper | Buyer | `INFORM` | `STOP_NEGOTIATION` | empty | Stops buyer negotiation. |
+| UI helper | Buyer | `INFORM` | `MANUAL_ACTION` | `SHORTLIST;dealer;price`, `COUNTER;price`, `ACCEPT;price`, or `WALKAWAY;` | Sends manual negotiation input to a manual buyer. |
+| UI helper | Buyer/Dealer/Broker | `INFORM` | `PAUSE_NEGOTIATION` / `RESUME_NEGOTIATION` | empty | Holds or resumes pausable broker-routed negotiation messages. |
 | UI helper | Dealer | `INFORM` | `PRICE_ADJUSTMENT` | `newPrice` | Manually adjusts dealer target price. |
+| UI helper | SpaceControl | `INFORM` | `PAUSE`, `RESUME`, `STEP`, `SET_SPEED` | empty or delay milliseconds | Controls market cycle flow. |
 | UI helper | Broker/SpaceControl | `INFORM` | `RESET_SESSION` | empty | Clears broker state and resets the market cycle for a fresh run. |
 
 ## Sequence Diagrams
@@ -385,6 +486,8 @@ sequenceDiagram
 
 The system uses time-dependent concession. A negotiation strategy controls how quickly the buyer and dealer change their prices as the deadline approaches.
 
+The current implementation combines this time-dependent price concession with multi-attribute utility scoring and opponent trend prediction. Price still drives the main concession curve, while warranty and delivery are adjusted alongside price and can make an offer acceptable even when the price is not exactly at the current target.
+
 Definitions:
 
 | Symbol | Meaning |
@@ -421,7 +524,7 @@ effectiveStrategy(t) =
 beta = beta(effectiveStrategy(t))
 ```
 
-Example: the runtime default starts with `BOULWARE` and switches to `CONCEDER` at cycle `15`. Demo Setup shortens the switch to cycle `6` so the strategy change is visible during a quick classroom run.
+Example: the runtime default starts with `BOULWARE` and switches to `CONCEDER` at cycle `3`. Demo Setup may create faster buyer configs so the strategy change is visible during a quick classroom run.
 
 ## Strategy Values
 
@@ -453,7 +556,9 @@ The dealer starts near the retail price and gradually moves down toward the rese
 DealerTarget(p) = P_retail - (P_retail - P_reserve) * (p / T_effective) ^ beta
 ```
 
-`p` is the greater of elapsed market cycles and local negotiation rounds. For narrow retail-to-reserve windows around RM10,000, the dealer stretches `T_effective` so it does not drop to reserve too quickly.
+`p` is the greater of elapsed market cycles and local negotiation rounds. For narrow retail-to-reserve windows, the dealer stretches `T_effective` so it does not drop to reserve too quickly.
+
+In the current code, a narrow dealer window means the retail-to-reserve gap is no more than 30% of retail price. In that case, the effective dealer deadline is stretched to three times the configured deadline.
 
 In code:
 
@@ -470,6 +575,7 @@ Interpretation:
 - The dealer never goes below reserve price.
 - The dealer target never increases after round-based concession has lowered it.
 - If the UI sends a manual price adjustment, the dealer uses that target while still protecting the reserve price.
+- Dealer counter terms lower warranty and lengthen delivery as the dealer concedes on price.
 
 Example:
 
@@ -505,7 +611,9 @@ The buyer starts from a lower initial offer and gradually increases toward the m
 BuyerOffer(p) = B_initial + (B_max - B_initial) * (p / T_effective) ^ beta
 ```
 
-`p` is the greater of elapsed market cycles and local negotiation rounds. For narrow affordability windows around RM10,000, the buyer stretches `T_effective` so high-money agents do not immediately jump to their maximum offer.
+`p` is the greater of elapsed market cycles and local negotiation rounds. For narrow affordability windows, the buyer stretches `T_effective` so high-money agents do not immediately jump to their maximum offer.
+
+In the current code, a narrow buyer window means the affordability gap is no more than 30% of the buyer budget. In that case, the effective buyer deadline is stretched to three times the configured deadline.
 
 In code:
 
@@ -520,7 +628,8 @@ Interpretation:
 - At `t = 0`, the buyer starts around `B_initial`.
 - At `p = T_effective`, the buyer reaches `B_max`.
 - The buyer never offers more than the maximum budget.
-- If the buyer has only about RM10,000 headroom over the target listing, the effective deadline is stretched to keep negotiation from ending immediately.
+- If the buyer has a narrow headroom window over the target listing, the effective deadline is stretched to keep negotiation from ending immediately.
+- Buyer terms improve warranty and shorten delivery as the buyer concedes on price.
 
 Example:
 
@@ -591,9 +700,9 @@ This halves the remaining gap between the current offer and maximum budget. It h
 
 ## Narrow Price Window Pacing
 
-Some high-money agents can afford a listing with only about RM10,000 of negotiation headroom. Without pacing, those agents can satisfy the acceptance rule almost immediately, making cycle shifts and strategy changes hard to observe.
+Some high-money agents can afford a listing with only a narrow negotiation headroom. Without pacing, those agents can satisfy the acceptance rule almost immediately, making cycle shifts and strategy changes hard to observe.
 
-To avoid that, buyers and dealers stretch their effective deadline when the relevant price window is at or below RM10,000:
+To avoid that, buyers and dealers stretch their effective deadline when the relevant price window is at or below 30% of the buyer budget or dealer retail price:
 
 - buyers compare maximum budget against the active dealer listing price;
 - dealers compare retail price against reserve price;
@@ -618,6 +727,7 @@ Configurable values:
 - `maxRoundsPerDealer`: failed rounds allowed before trying the next dealer.
 - `maxSearchRetries`: broker search retries before giving up.
 - `stuckRoundsBeforeAcceleration`: round threshold for accelerated buyer concession.
+- `manualDealerTargetPercent`: multiplier applied to dealer targets for manual/default adjustment.
 - Utility defaults in `negotiation-defaults.properties`: price, warranty, and delivery weights for multi-attribute negotiation.
 
 Because configuration is passed during agent creation, you can run different experiments without editing Java code.
@@ -631,12 +741,16 @@ Because configuration is passed during agent creation, you can run different exp
 | Negotiation stuck | Buyer accelerates concession after the configured stuck-round threshold. |
 | Too many failed rounds | Buyer moves to another dealer, up to three dealers, or reports `NO_DEAL;MAX_ROUNDS_REACHED`. |
 | Dealer rejects first offer | Only clearly unworkable first offers are rejected; otherwise the dealer sends a counter-offer. |
+| Broker session is duplicated | Broker rejects the duplicate active session with `BROKER_SESSION_REJECTED;DUPLICATE_SESSION`. |
+| Broker session times out | Broker marks the session as `TIMEOUT`, logs a no-deal, and notifies the buyer with `BROKER_SESSION_REJECTED`. |
 | User presses Stop | Buyer reports `NO_DEAL;USER_STOPPED`. |
 | User presses Clear Session | UI kills buyer/dealer agents, resets broker and space-control state, clears metrics/logs/visualisers, and keeps the app ready for a new setup. |
-| Dealer stock reaches zero | Dealer logs out of stock, deregisters from `SpaceControl`, terminates, and the broker removes the listing from inventory. |
+| Dealer stock reaches zero | Dealer logs out of stock, notifies the broker of pending sessions with `DEALER_SOLD_OUT`, deregisters from `SpaceControl`, terminates, and the broker removes the listing from inventory. |
+| Dealer sells out during another buyer's session | Broker closes affected sessions as no-deals and sends `BROKER_RELAY_SOLD_OUT` so buyers can try the next dealer. |
 | Buyer closes a deal | Buyer logs the purchase, deregisters from `SpaceControl`, terminates, and the UI removes it from active buyer lists. |
 | New dealer joins mid-simulation | Broker stores the listing, and future buyer searches can find the new dealer. |
 | Manual price change | UI sends `PRICE_ADJUSTMENT` to a dealer, and the dealer updates its target price while respecting reserve price. |
+| Manual buyer walks away | Buyer sends `BUYER_WALKAWAY;MANUAL_WALKAWAY`, broker records a no-deal, and the manual controls enter a terminal state. |
 
 ## JADE Sniffer
 
@@ -660,7 +774,7 @@ How to use it:
 Expected message arrows:
 
 - Buyer to Broker: `BUYER_SEARCH`, `BUYER_SHORTLIST`, `BUYER_COUNTER`, `BUYER_WALKAWAY`
-- Broker to Buyer: `BROKER_SHORTLIST`, `BROKER_RELAY_COUNTER`, `BROKER_RELAY_ACCEPT`
+- Broker to Buyer: `BROKER_SHORTLIST`, `BROKER_RELAY_COUNTER`, `BROKER_RELAY_ACCEPT`, `BROKER_SESSION_REJECTED`, `BROKER_RELAY_SOLD_OUT`
 - Broker to Dealer: `BROKER_INVITE`, `BROKER_RELAY_OFFER`
 - Dealer to Broker: `DEALER_COUNTER`, `DEALER_ACCEPT`, `DEALER_SOLD_OUT`
 - SpaceControl to Buyer/Dealer: `CYCLE_UPDATE`
@@ -692,14 +806,3 @@ BrokerEarning = fixedSessionFee + (FinalSalePrice * commissionRate)
 ```
 
 By default the fixed session fee is `RM50` and commission is `5%` of the final sale price. The fixed fee is charged when a broker session starts; commission is charged only for successful deals. Pre-session failures such as no matching car or unaffordable reserve prices are logged as no-deals without a session fee.
-
-## Limitations
-
-- Standard agents use the strategy settings they were created with. Demo Overdrive intentionally uses a faster buyer-side config to show a different negotiation profile.
-- Existing agents keep the configuration they were created with; changing settings affects newly created agents.
-- Broker inventory is in memory only and resets when the application restarts.
-- The Sniffer is a JADE debugging tool. The app preloads demo/system agents, but custom buyer/dealer names may still require manual selection inside the Sniffer window.
-
-## Summary
-
-This system demonstrates a multi-agent negotiation marketplace using JADE ACL messaging. It includes dynamic negotiation strategies, configurable parameters, cycle-based price concession, UI-controlled start/pause/stop, edge-case handling, performance logging, and Sniffer-based communication visualisation.
