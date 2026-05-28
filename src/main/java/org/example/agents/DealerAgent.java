@@ -48,7 +48,6 @@ public class DealerAgent extends Agent {
     private boolean negotiationPaused = false;
     private final List<ACLMessage> pausedMessages = new ArrayList<>();
     private final List<Runnable> pausedActions = new ArrayList<>();
-    // ★ FIXED: Removed hardcoded NARROW_PRICE_WINDOW. Now uses relative 30% of retail price.
 
     /** Per-session state that isolates concurrent buyers for the same dealer. */
     private static class DealerSessionState {
@@ -424,14 +423,13 @@ public class DealerAgent extends Agent {
     }
 
     /** Extends the concession deadline for narrow retail-to-reserve price windows.
-     *  ★ FIXED: Uses relative 30% of retail price threshold instead of hardcoded RM10,000.
      *  Deadline now triples (matching BuyerAgent behaviour) instead of doubling. */
     private int effectiveDealerDeadlineCycles() {
         int deadline = config.getDeadlineCycles();
         int priceWindow = retailPrice - minPrice;
-        int narrowWindow = (int)(retailPrice * 0.30); // ★ FIXED: relative threshold
+        int narrowWindow = (int)(retailPrice * 0.30); 
         if (priceWindow > 0 && priceWindow <= narrowWindow) {
-            return Math.max(deadline, deadline * 3); // ★ FIXED: triple not double
+            return Math.max(deadline, deadline * 3);
         }
         return deadline;
     }

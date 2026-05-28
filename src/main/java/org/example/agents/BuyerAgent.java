@@ -40,7 +40,6 @@ public class BuyerAgent extends Agent {
     private boolean negotiationStarted = true;  // false = wait for manual start signal
     private boolean isManualStrategy = false;
     private static final int MAX_DEALER_NEGOTIATIONS = 3;
-    // ★ FIXED: Removed hardcoded NARROW_PRICE_WINDOW = 10_000.
     // Window is now computed relative to maxBudget (30%) inside each method.
 
     // ── Negotiation state ─────────────────────────────────────────────────────
